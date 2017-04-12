@@ -61,6 +61,7 @@ import org.jruby.runtime.encoding.EncodingCapable;
 import org.jruby.runtime.marshal.MarshalStream;
 import org.jruby.runtime.marshal.UnmarshalStream;
 import org.jruby.specialized.RubyArrayOneObject;
+import org.jruby.specialized.RubyArrayThreeObject;
 import org.jruby.specialized.RubyArrayTwoObject;
 import org.jruby.util.ArraySupport;
 import org.jruby.util.ByteList;
@@ -231,7 +232,7 @@ public class RubyArray extends RubyObject implements List, RandomAccess {
     }
 
     public static RubyArray newArray(Ruby runtime, IRubyObject first, IRubyObject second, IRubyObject third) {
-        return new RubyArray(runtime, arrayOf(first, second, third));
+        return new RubyArrayThreeObject(runtime, first, second, third);
     }
 
     public static RubyArray newArray(Ruby runtime, IRubyObject first, IRubyObject second, IRubyObject third, IRubyObject fourth) {
@@ -246,16 +247,8 @@ public class RubyArray extends RubyObject implements List, RandomAccess {
      *
      */
     public static RubyArray newArray(Ruby runtime, IRubyObject[] args) {
-        switch (args.length) {
-            case 0:
-                return newEmptyArray(runtime);
-            case 1:
-                if (USE_PACKED_ARRAYS) return new RubyArrayOneObject(runtime, args[0]);
-                break;
-            case 2:
-                if (USE_PACKED_ARRAYS) return new RubyArrayTwoObject(runtime, args[0], args[1]);
-                break;
-        }
+        RubyArray x = newPackedArrayFromArray(runtime, args, 0, args.length);
+        if (x != null) return x;
         RubyArray arr = new RubyArray(runtime, new IRubyObject[args.length]);
         System.arraycopy(args, 0, arr.values, 0, args.length);
         arr.realLength = args.length;
@@ -266,16 +259,8 @@ public class RubyArray extends RubyObject implements List, RandomAccess {
      * @see RubyArray#newArrayMayCopy(Ruby, IRubyObject[], int, int)
      */
     public static RubyArray newArrayMayCopy(Ruby runtime, IRubyObject... args) {
-        switch (args.length) {
-            case 0:
-                return newEmptyArray(runtime);
-            case 1:
-                if (USE_PACKED_ARRAYS) return new RubyArrayOneObject(runtime, args[0]);
-                break;
-            case 2:
-                if (USE_PACKED_ARRAYS) return new RubyArrayTwoObject(runtime, args[0], args[1]);
-                break;
-        }
+        RubyArray x = newPackedArrayFromArray(runtime, args, 0, args.length);
+        if (x != null) return x;
         return newArrayNoCopy(runtime, args, 0, args.length);
     }
 
@@ -299,16 +284,8 @@ public class RubyArray extends RubyObject implements List, RandomAccess {
      * @return an array referencing the given elements
      */
     public static RubyArray newArrayMayCopy(Ruby runtime, IRubyObject[] args, int start, int length) {
-        switch (length) {
-            case 0:
-                return newEmptyArray(runtime);
-            case 1:
-                if (USE_PACKED_ARRAYS) return new RubyArrayOneObject(runtime, args[start]);
-                break;
-            case 2:
-                if (USE_PACKED_ARRAYS) return new RubyArrayTwoObject(runtime, args[start], args[start + 1]);
-                break;
-        }
+        RubyArray x = newPackedArrayFromArray(runtime, args, start, length);
+        if (x != null) return x;
         return newArrayNoCopy(runtime, args, start, length);
     }
 
@@ -338,16 +315,25 @@ public class RubyArray extends RubyObject implements List, RandomAccess {
         // This may seem inefficient for packed arrays, but the cost of this versus is not really worse
         // than the cost of constructing and walking an Iterator.
         IRubyObject[] values = collection.toArray(new IRubyObject[collection.size()]);
+        RubyArray x = newPackedArrayFromArray(runtime, values, 0, values.length);
+        if (x != null) return x;
+        return new RubyArray(runtime, values);
+    }
+
+    private static RubyArray newPackedArrayFromArray(Ruby runtime, IRubyObject[] values, int start, int length) {
         switch (values.length) {
             case 0: return newEmptyArray(runtime);
             case 1:
-                if (USE_PACKED_ARRAYS) return new RubyArrayOneObject(runtime, values[0]);
+                if (USE_PACKED_ARRAYS) return new RubyArrayOneObject(runtime, values[start]);
                 break;
             case 2:
-                if (USE_PACKED_ARRAYS) return new RubyArrayTwoObject(runtime, values[0], values[1]);
+                if (USE_PACKED_ARRAYS) return new RubyArrayTwoObject(runtime, values[start], values[start + 1]);
+                break;
+            case 3:
+                if (USE_PACKED_ARRAYS) return new RubyArrayThreeObject(runtime, values[start], values[start + 1], values[start + 2]);
                 break;
         }
-        return new RubyArray(runtime, values);
+        return null;
     }
 
     public static RubyArray newArray(Ruby runtime, List<? extends IRubyObject> list) {

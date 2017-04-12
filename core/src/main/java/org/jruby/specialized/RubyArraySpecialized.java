@@ -43,7 +43,7 @@ import org.jruby.runtime.builtin.IRubyObject;
  * RubyArray{@link #uniq(org.jruby.runtime.ThreadContext)}
  */
 public abstract class RubyArraySpecialized extends RubyArray {
-    public static final int MAX_PACKED_SIZE = 2;
+    public static final int MAX_PACKED_SIZE = 3;
 
     public RubyArraySpecialized(Ruby runtime, boolean light) {
         super(runtime, runtime.getArray(), light);
