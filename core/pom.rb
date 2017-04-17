@@ -78,6 +78,12 @@ project 'JRuby Core' do
 
   jar 'me.qmx.jitescript:jitescript:0.4.1', :exclusions => ['org.ow2.asm:asm-all']
 
+  jar 'jdk8-jvmci:jvmci-services:0', :systemPath => '${java.home}/../jre/lib/jvmci-services.jar', :scope => :system
+  jar 'jdk8-jvmci:jvmci-api:0', :systemPath => '${java.home}/../jre/lib/jvmci/jvmci-api.jar', :scope => :system
+  jar 'jdk8-jvmci:jvmci-hotspot:0', :systemPath => '${java.home}/../jre/lib/jvmci/jvmci-hotspot.jar', :scope => :system
+
+  jar 'graal:graal:0', :systemPath => '/usr/lib/jvm/graalvm/lib/graal/graal.jar', :scope => :system
+
   plugin_management do
     plugin( 'org.eclipse.m2e:lifecycle-mapping:1.0.0',
             'lifecycleMappingMetadata' => {
@@ -166,8 +172,8 @@ project 'JRuby Core' do
           'compilerArgs' => { 'arg' => '-J-Xmx1G' },
           'showWarnings' => 'true',
           'showDeprecation' => 'true',
-          'source' => [ '${base.java.version}', '1.7' ],
-          'target' => [ '${base.javac.version}', '1.7' ],
+          'source' => [ '${base.java.version}', '1.8' ],
+          'target' => [ '${base.javac.version}', '1.8' ],
           'useIncrementalCompilation' =>  'false' ) do
     execute_goals( 'compile',
                    :id => 'anno',

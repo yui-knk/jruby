@@ -273,6 +273,34 @@ DO NOT MODIFIY - GENERATED CODE
         </exclusion>
       </exclusions>
     </dependency>
+    <dependency>
+      <groupId>jdk8-jvmci</groupId>
+      <artifactId>jvmci-services</artifactId>
+      <version>0</version>
+      <scope>system</scope>
+      <systemPath>${java.home}/../jre/lib/jvmci-services.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>jdk8-jvmci</groupId>
+      <artifactId>jvmci-api</artifactId>
+      <version>0</version>
+      <scope>system</scope>
+      <systemPath>${java.home}/../jre/lib/jvmci/jvmci-api.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>jdk8-jvmci</groupId>
+      <artifactId>jvmci-hotspot</artifactId>
+      <version>0</version>
+      <scope>system</scope>
+      <systemPath>${java.home}/../jre/lib/jvmci/jvmci-hotspot.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>graal</groupId>
+      <artifactId>graal</artifactId>
+      <version>0</version>
+      <scope>system</scope>
+      <systemPath>/usr/lib/jvm/graalvm/lib/graal/graal.jar</systemPath>
+    </dependency>
   </dependencies>
   <build>
     <defaultGoal>package</defaultGoal>
@@ -534,9 +562,9 @@ DO NOT MODIFIY - GENERATED CODE
           <showWarnings>true</showWarnings>
           <showDeprecation>true</showDeprecation>
           <source>${base.java.version}</source>
-          <source>1.7</source>
+          <source>1.8</source>
           <target>${base.javac.version}</target>
-          <target>1.7</target>
+          <target>1.8</target>
           <useIncrementalCompilation>false</useIncrementalCompilation>
         </configuration>
       </plugin>
