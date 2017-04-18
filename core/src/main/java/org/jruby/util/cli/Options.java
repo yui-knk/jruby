@@ -93,6 +93,7 @@ public class Options {
     public static final Option<Boolean> INVOKEDYNAMIC_INVOCATION_ATTR = bool(INVOKEDYNAMIC, "invokedynamic.invocation.attr", true, "Bind Ruby attribute invocations directly to invokedynamic.");
     public static final Option<Boolean> INVOKEDYNAMIC_INVOCATION_FFI = bool(INVOKEDYNAMIC, "invokedynamic.invocation.ffi", true, "Bind Ruby FFI invocations directly to invokedynamic.");
     public static final Option<Boolean> INVOKEDYNAMIC_INVOCATION_FASTOPS = bool(INVOKEDYNAMIC, "invokedynamic.invocation.fastops", true, "Bind Fixnum and Float math using optimized logic.");
+    public static final Option<Boolean> INVOKEDYNAMIC_INVOCATION_YIELD = bool(INVOKEDYNAMIC, "invokedynamic.invocation.yield", false, "Bypass polymorphic yield logic by using invokedynamic.");
     public static final Option<Boolean> INVOKEDYNAMIC_CACHE = bool(INVOKEDYNAMIC, "invokedynamic.cache", true, "Use invokedynamic to load cached values like literals and constants.");
     public static final Option<Boolean> INVOKEDYNAMIC_CACHE_CONSTANTS = bool(INVOKEDYNAMIC, "invokedynamic.cache.constants", true, "Use invokedynamic to load constants.");
     public static final Option<Boolean> INVOKEDYNAMIC_CACHE_LITERALS = bool(INVOKEDYNAMIC, "invokedynamic.cache.literals", true, "Use invokedynamic to load literals.");
