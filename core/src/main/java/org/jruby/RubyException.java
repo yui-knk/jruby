@@ -339,6 +339,10 @@ public class RubyException extends RubyObject {
         }
     };
 
+    public static final String MESSAGE_KEY = "mesg";
+    public static final String BACKTRACE_KEY = "bt";
+    public static final String ERRNO_KEY = "errno";
+
     private static final ObjectMarshal EXCEPTION_MARSHAL = new ObjectMarshal() {
         @Override
         public void marshalTo(Ruby runtime, Object obj, RubyClass type,
@@ -347,8 +351,8 @@ public class RubyException extends RubyObject {
 
             marshalStream.registerLinkTarget(exc);
             List<Variable<Object>> attrs = exc.getVariableList();
-            attrs.add(new VariableEntry<Object>("mesg", exc.getMessage()));
-            attrs.add(new VariableEntry<Object>("bt", exc.getBacktrace()));
+            attrs.add(new VariableEntry<Object>(MESSAGE_KEY, exc.getMessage()));
+            attrs.add(new VariableEntry<Object>(BACKTRACE_KEY, exc.getBacktrace()));
             marshalStream.dumpVariables(attrs);
         }
 
@@ -362,8 +366,8 @@ public class RubyException extends RubyObject {
             // just use real vars all the time for these?
             unmarshalStream.defaultVariablesUnmarshal(exc);
 
-            exc.setMessage((IRubyObject)exc.removeInternalVariable("mesg"));
-            exc.set_backtrace((IRubyObject)exc.removeInternalVariable("bt"));
+            exc.setMessage((IRubyObject)exc.removeInternalVariable(MESSAGE_KEY));
+            exc.set_backtrace((IRubyObject)exc.removeInternalVariable(BACKTRACE_KEY));
 
             return exc;
         }
