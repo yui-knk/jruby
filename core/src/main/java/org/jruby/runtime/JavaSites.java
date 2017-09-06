@@ -40,6 +40,7 @@ public class JavaSites {
     public final WarningSites Warning = new WarningSites();
     public final ZlibSites Zlib = new ZlibSites();
     public final TimeoutSites Timeout = new TimeoutSites();
+    public final RaiseExceptionSites RaiseException = new RaiseExceptionSites();
 
     public static class BasicObjectSites {
         public final CallSite respond_to = new FunctionalCachingCallSite("respond_to?");
@@ -407,6 +408,10 @@ public class JavaSites {
 
     public static class TimeoutSites {
         public final CallSite timeout = new FunctionalCachingCallSite("timeout");
+    }
+
+    public static class RaiseExceptionSites {
+        public final CallSite _new = new FunctionalCachingCallSite("new");
     }
 
     public static class CheckedSites {

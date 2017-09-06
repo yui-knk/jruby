@@ -226,11 +226,16 @@ public class RubyException extends RubyObject {
         return backtraceData.getBacktrace(getRuntime());
     }
 
-    public void prepareBacktrace(ThreadContext context, boolean nativeException) {
+    public void prepareBacktrace(ThreadContext context) {
         // if it's null, build a backtrace
         if (backtraceData == null) {
-            backtraceData = context.runtime.getInstanceConfig().getTraceType().getBacktrace(context, nativeException);
+            backtraceData = context.runtime.getInstanceConfig().getTraceType().getBacktrace(context);
         }
+    }
+
+    @Deprecated
+    public void prepareBacktrace(ThreadContext context, boolean ignored) {
+        prepareBacktrace(context);
     }
 
     /**

@@ -122,7 +122,7 @@ public class NetProtocolBufferedIO {
                         return buf.concat(readItems);
                     } else {
                         RubyClass exc = (RubyClass)(recv.getRuntime().getModule("Timeout").getConstant("Error"));
-                        throw new RaiseException(RubyException.newException(recv.getRuntime(), exc, "execution expired"),false);
+                        throw new RaiseException(RubyException.newException(recv.getRuntime(), exc, "execution expired"));
                     }
                 } catch(IOException exception) {
                     throw recv.getRuntime().newIOErrorFromException(exception);
