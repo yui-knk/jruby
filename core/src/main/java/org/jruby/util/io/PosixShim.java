@@ -416,6 +416,8 @@ public class PosixShim {
             errno = Errno.EEXIST;
         } catch (ResourceException.FileIsDirectory e) {
             errno = Errno.EISDIR;
+        } catch (ResourceException.FileIsNotDirectory e) {
+            errno = Errno.ENOTDIR;
         } catch (ResourceException.NotFound e) {
             errno = Errno.ENOENT;
         } catch (ResourceException.PermissionDenied e) {
@@ -423,7 +425,7 @@ public class PosixShim {
         } catch (ResourceException.TooManySymlinks e) {
             errno = Errno.ELOOP;
         } catch (IOException e) {
-            throw new RuntimeException("Unhandled IOException: " + e.getLocalizedMessage(), e);
+            errno = Helpers.errnoFromException(e);
         }
         return null;
     }

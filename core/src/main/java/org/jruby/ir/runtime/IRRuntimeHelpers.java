@@ -1,27 +1,52 @@
 package org.jruby.ir.runtime;
 
 import com.headius.invokebinder.Signature;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.lang.invoke.MethodHandle;
+import java.util.ArrayList;
+import java.util.Map;
 import org.jcodings.Encoding;
-import org.jruby.*;
+import org.jruby.EvalType;
+import org.jruby.MetaClass;
+import org.jruby.NativeException;
+import org.jruby.Ruby;
+import org.jruby.RubyArray;
+import org.jruby.RubyBasicObject;
+import org.jruby.RubyBoolean;
+import org.jruby.RubyClass;
+import org.jruby.RubyEncoding;
+import org.jruby.RubyFixnum;
+import org.jruby.RubyFloat;
+import org.jruby.RubyHash;
+import org.jruby.RubyInstanceConfig;
+import org.jruby.RubyLocalJumpError;
+import org.jruby.RubyMatchData;
+import org.jruby.RubyMethod;
+import org.jruby.RubyModule;
+import org.jruby.RubyNil;
+import org.jruby.RubyProc;
+import org.jruby.RubyRegexp;
+import org.jruby.RubyString;
+import org.jruby.RubySymbol;
 import org.jruby.common.IRubyWarnings;
 import org.jruby.exceptions.RaiseException;
 import org.jruby.exceptions.Unrescuable;
-import org.jruby.internal.runtime.methods.CompiledIRNoProtocolMethod;
 import org.jruby.internal.runtime.methods.CompiledIRMethod;
+import org.jruby.internal.runtime.methods.CompiledIRNoProtocolMethod;
 import org.jruby.internal.runtime.methods.DynamicMethod;
 import org.jruby.internal.runtime.methods.InterpretedIRBodyMethod;
 import org.jruby.internal.runtime.methods.InterpretedIRMetaClassBody;
 import org.jruby.internal.runtime.methods.InterpretedIRMethod;
 import org.jruby.internal.runtime.methods.MixedModeIRMethod;
 import org.jruby.internal.runtime.methods.UndefinedMethod;
-import org.jruby.ir.IRMetaClassBody;
 import org.jruby.ir.IRClosure;
+import org.jruby.ir.IRMetaClassBody;
 import org.jruby.ir.IRMethod;
 import org.jruby.ir.IRScope;
 import org.jruby.ir.IRScopeType;
 import org.jruby.ir.Interp;
 import org.jruby.ir.JIT;
-import org.jruby.ir.Tuple;
 import org.jruby.ir.operands.IRException;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Splat;
@@ -29,8 +54,17 @@ import org.jruby.ir.operands.UndefinedValue;
 import org.jruby.ir.persistence.IRReader;
 import org.jruby.ir.persistence.IRReaderStream;
 import org.jruby.parser.StaticScope;
-import org.jruby.runtime.*;
+import org.jruby.runtime.Arity;
+import org.jruby.runtime.Binding;
+import org.jruby.runtime.Block;
+import org.jruby.runtime.BlockBody;
+import org.jruby.runtime.CallSite;
+import org.jruby.runtime.CallType;
+import org.jruby.runtime.DynamicScope;
+import org.jruby.runtime.Helpers;
 import org.jruby.runtime.JavaSites.IRRuntimeHelpersSites;
+import org.jruby.runtime.ThreadContext;
+import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.callsite.CachingCallSite;
 import org.jruby.runtime.callsite.FunctionalCachingCallSite;
@@ -45,11 +79,6 @@ import org.jruby.util.TypeConverter;
 import org.jruby.util.log.Logger;
 import org.jruby.util.log.LoggerFactory;
 import org.objectweb.asm.Type;
-
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.lang.invoke.MethodHandle;
-import java.util.Map;
 
 public class IRRuntimeHelpers {
     private static final Logger LOG = LoggerFactory.getLogger(IRRuntimeHelpers.class);
@@ -94,8 +123,8 @@ public class IRRuntimeHelpers {
     }
 
     // Create a jump for a non-local return which will return from nearest lambda (which may be itself) or method.
-    public static IRubyObject initiateNonLocalReturn(ThreadContext context, DynamicScope dynScope, Block.Type blockType, IRubyObject returnValue) {
-        if (IRRuntimeHelpers.inLambda(blockType)) throw new IRWrappedLambdaReturnValue(returnValue);
+    public static IRubyObject initiateNonLocalReturn(ThreadContext context, DynamicScope dynScope, Block block, IRubyObject returnValue) {
+        if (block != null && IRRuntimeHelpers.inLambda(block.type)) throw new IRWrappedLambdaReturnValue(returnValue);
 
         throw IRReturnJump.create(getContainingMethodOrLambdasDynamicScope(dynScope), returnValue);
     }
@@ -158,15 +187,21 @@ public class IRRuntimeHelpers {
     }
 
     // FIXME: When we recompile lambdas we can eliminate this binary code path and we can emit as a NONLOCALRETURN directly.
-    public static IRubyObject initiateBreak(ThreadContext context, DynamicScope dynScope, IRubyObject breakValue, Block.Type blockType) throws RuntimeException {
+    public static IRubyObject initiateBreak(ThreadContext context, DynamicScope dynScope, IRubyObject breakValue, Block block) throws RuntimeException {
         // Wrap the return value in an exception object and push it through the break exception
         // paths so that ensures are run, frames/scopes are popped from runtime stacks, etc.
-        if (inLambda(blockType)) throw new IRWrappedLambdaReturnValue(breakValue);
+        if (inLambda(block.type)) throw new IRWrappedLambdaReturnValue(breakValue);
 
         IRScopeType scopeType = ensureScopeIsClosure(context, dynScope);
 
+        DynamicScope parentScope = dynScope.getParentScope();
+
+        if (block.isEscaped()) {
+            throw context.runtime.newLocalJumpError(RubyLocalJumpError.Reason.BREAK, breakValue, "unexpected break");
+        }
+
         // Raise a break jump so we can bubble back down the stack to the appropriate place to break from.
-        throw IRBreakJump.create(dynScope.getParentScope(), breakValue, scopeType.isEval()); // weirdly evals are impld as closures...yes yes.
+        throw IRBreakJump.create(parentScope, breakValue, scopeType.isEval()); // weirdly evals are impld as closures...yes yes.
     }
 
     // Are we within the scope where we want to return the value we are passing down the stack?
@@ -401,11 +436,6 @@ public class IRRuntimeHelpers {
         return isUndefValue ? receiver : callSite.call(context, receiver, receiver, value);
     }
 
-    @Deprecated
-    public static IRubyObject isEQQ(ThreadContext context, IRubyObject receiver, IRubyObject value, CallSite callSite) {
-        return isEQQ(context, receiver, value, callSite, true);
-    }
-
     public static IRubyObject newProc(Ruby runtime, Block block) {
         return (block == Block.NULL_BLOCK) ? runtime.getNil() : runtime.newProc(Block.Type.PROC, block);
     }
@@ -440,10 +470,10 @@ public class IRRuntimeHelpers {
                 if (argIsArray) {
                     RubyArray valArray = (RubyArray)value;
                     if (valArray.size() == 1) value = valArray.eltInternal(0);
-                    value = Helpers.aryToAry(value);
+                    value = Helpers.aryToAry(context, value);
                     return (value instanceof RubyArray) ? ((RubyArray)value).toJavaArray() : new IRubyObject[] { value };
                 } else {
-                    IRubyObject val0 = Helpers.aryToAry(value);
+                    IRubyObject val0 = Helpers.aryToAry(context, value);
                     // FIXME: This logic exists in RubyProc and IRRubyBlockBody. consolidate when we do block call protocol work
                     if (val0.isNil()) {
                         return new IRubyObject[] { value };
@@ -490,40 +520,55 @@ public class IRRuntimeHelpers {
         }
     }
 
+    public static IRubyObject[] frobnicateKwargsArgument(ThreadContext context, IRubyObject[] args, 
+        org.jruby.runtime.Signature signature) {
+        return frobnicateKwargsArgument(context, args, signature.required());
+    }
+
     public static IRubyObject[] frobnicateKwargsArgument(ThreadContext context, IRubyObject[] args, int requiredArgsCount) {
-        if (args.length <= requiredArgsCount) return args; // No kwarg because required args slurp them up.
+        // No kwarg because required args slurp them up.
+        return args.length <= requiredArgsCount ? args : frobnicateKwargsArgument(context, args);
+    }
 
+    private static IRubyObject[] frobnicateKwargsArgument(final ThreadContext context, IRubyObject[] args) {
         final IRubyObject kwargs = toHash(args[args.length - 1], context);
-
         if (kwargs != null) {
             if (kwargs.isNil()) { // nil on to_hash is supposed to keep itself as real value so we need to make kwargs hash
                 return ArraySupport.newCopy(args, RubyHash.newSmallHash(context.runtime));
             }
 
-            Tuple<RubyHash, RubyHash> hashes = new Tuple<>(RubyHash.newSmallHash(context.runtime), RubyHash.newSmallHash(context.runtime));
-
+            DivvyKeywordsVisitor visitor = new DivvyKeywordsVisitor();
             // We know toHash makes null, nil, or Hash
-            ((RubyHash) kwargs).visitAll(context, DivvyKeywordsVisitor, hashes);
+            ((RubyHash) kwargs).visitAll(context, visitor, null);
 
-            if (!hashes.b.isEmpty()) { // rest args exists too expand args
+            if (visitor.syms == null) {
+                // no symbols, use empty kwargs hash
+                visitor.syms = RubyHash.newSmallHash(context.runtime);
+            }
+
+            if (visitor.others != null) { // rest args exists too expand args
                 IRubyObject[] newArgs = new IRubyObject[args.length + 1];
                 System.arraycopy(args, 0, newArgs, 0, args.length);
                 args = newArgs;
-                args[args.length - 2] = hashes.b; // opt args
+                args[args.length - 2] = visitor.others; // opt args
             }
-            args[args.length - 1] = hashes.a; // kwargs hash
+            args[args.length - 1] = visitor.syms; // kwargs hash
         }
-
         return args;
     }
 
-    private static final RubyHash.VisitorWithState<Tuple<RubyHash, RubyHash>> DivvyKeywordsVisitor = new RubyHash.VisitorWithState<Tuple<RubyHash, RubyHash>>() {
+    private static class DivvyKeywordsVisitor extends RubyHash.VisitorWithState {
+        RubyHash syms;
+        RubyHash others;
+
         @Override
-        public void visit(ThreadContext context, RubyHash self, IRubyObject key, IRubyObject value, int index, Tuple<RubyHash, RubyHash> hashes) {
+        public void visit(ThreadContext context, RubyHash self, IRubyObject key, IRubyObject value, int index, Object unused) {
             if (key instanceof RubySymbol) {
-                hashes.a.op_aset(context, key, value);
+                if (syms == null) syms = RubyHash.newSmallHash(context.runtime);
+                syms.fastASetSmall(key, value);
             } else {
-                hashes.b.op_aset(context, key, value);
+                if (others == null) others = RubyHash.newSmallHash(context.runtime);
+                others.fastASetSmall(key, value);
             }
         }
     };
@@ -555,21 +600,53 @@ public class IRRuntimeHelpers {
     }
 
     public static void checkForExtraUnwantedKeywordArgs(ThreadContext context, final StaticScope scope, RubyHash keywordArgs) {
-        keywordArgs.visitAll(context, CheckUnwantedKeywordsVisitor, scope);
+        // we do an inexpensive non-gathering scan first to see if there's a bad keyword
+        try {
+            keywordArgs.visitAll(context, CheckUnwantedKeywordsVisitor, scope);
+        } catch (InvalidKeyException ike) {
+            // there's a bad keyword; perform more expensive scan to gather all bad names
+            GatherUnwantedKeywordsVisitor visitor = new GatherUnwantedKeywordsVisitor();
+            keywordArgs.visitAll(context, visitor, scope);
+            visitor.raiseIfError(context);
+        }
     }
 
+    private static class InvalidKeyException extends RuntimeException {}
+    private static final InvalidKeyException INVALID_KEY_EXCEPTION = new InvalidKeyException();
     private static final RubyHash.VisitorWithState<StaticScope> CheckUnwantedKeywordsVisitor = new RubyHash.VisitorWithState<StaticScope>() {
         @Override
         public void visit(ThreadContext context, RubyHash self, IRubyObject key, IRubyObject value, int index, StaticScope scope) {
-            if (!scope.keywordExists(key.asJavaString())) {
-                throw context.runtime.newArgumentError("unknown keyword: " + key.asJavaString());
+            String javaName = key.asJavaString();
+            if (!scope.keywordExists(javaName)) {
+                throw INVALID_KEY_EXCEPTION;
             }
         }
     };
 
+    private static class GatherUnwantedKeywordsVisitor extends RubyHash.VisitorWithState<StaticScope> {
+        ArrayList invalidKwargs;
+        @Override
+        public void visit(ThreadContext context, RubyHash self, IRubyObject key, IRubyObject value, int index, StaticScope scope) {
+            String javaName = key.asJavaString();
+            if (!scope.keywordExists(javaName)) {
+                if (invalidKwargs == null) invalidKwargs = new ArrayList();
+                invalidKwargs.add(javaName);
+            }
+        }
+
+        public void raiseIfError(ThreadContext context) {
+            if (invalidKwargs != null) {
+                String invalidKwargs = this.invalidKwargs.toString();
+                throw context.runtime.newArgumentError(
+                        (this.invalidKwargs.size() == 1 ? "unknown keyword: " : "unknown keywords: ")
+                                + invalidKwargs.substring(1, invalidKwargs.length() - 1));
+            }
+        }
+    }
+
     public static IRubyObject match3(ThreadContext context, RubyRegexp regexp, IRubyObject argValue) {
         if (argValue instanceof RubyString) {
-            return regexp.op_match19(context, argValue);
+            return regexp.op_match(context, argValue);
         } else {
             return argValue.callMethod(context, "=~", regexp);
         }
@@ -673,14 +750,13 @@ public class IRRuntimeHelpers {
         return RubyRegexp.nth_match(matchNumber, context.getBackRef());
     }
 
-    public static void defineAlias(ThreadContext context, IRubyObject self, DynamicScope currDynScope, String newNameString, String oldNameString) {
+    public static void defineAlias(ThreadContext context, IRubyObject self, DynamicScope currDynScope, IRubyObject newNameString, IRubyObject oldNameString) {
         if (self == null || self instanceof RubyFixnum || self instanceof RubySymbol) {
             throw context.runtime.newTypeError("no class to make alias");
         }
 
         RubyModule module = findInstanceMethodContainer(context, currDynScope, self);
-        module.defineAlias(newNameString, oldNameString);
-        module.callMethod(context, "method_added", context.runtime.newSymbol(newNameString));
+        module.alias_method(context, newNameString, oldNameString);
     }
 
     public static RubyModule getModuleFromScope(ThreadContext context, StaticScope scope, IRubyObject arg) {
@@ -1456,7 +1532,7 @@ public class IRRuntimeHelpers {
     @JIT
     public static RubyArray irSplat(ThreadContext context, IRubyObject ary) {
         Ruby runtime = context.runtime;
-        IRubyObject tmp = TypeConverter.convertToTypeWithCheck19(context, ary, runtime.getArray(), sites(context).to_a_checked);
+        IRubyObject tmp = TypeConverter.convertToTypeWithCheck(context, ary, runtime.getArray(), sites(context).to_a_checked);
         if (tmp.isNil()) {
             tmp = runtime.newArray(ary);
         }
@@ -1474,7 +1550,7 @@ public class IRRuntimeHelpers {
     @JIT @Interp
     public static RubyArray splatArray(ThreadContext context, IRubyObject ary, boolean dupArray) {
         Ruby runtime = context.runtime;
-        IRubyObject tmp = TypeConverter.convertToTypeWithCheck19(context, ary, runtime.getArray(), sites(context).to_a_checked);
+        IRubyObject tmp = TypeConverter.convertToTypeWithCheck(context, ary, runtime.getArray(), sites(context).to_a_checked);
 
         if (tmp.isNil()) {
             tmp = runtime.newArray(ary);
@@ -1522,7 +1598,7 @@ public class IRRuntimeHelpers {
 
     @JIT
     public static void pushExitBlock(ThreadContext context, Block blk) {
-        context.runtime.pushExitBlock(context.runtime.newProc(Block.Type.LAMBDA, blk));
+        context.runtime.pushEndBlock(context.runtime.newProc(Block.Type.LAMBDA, blk));
     }
 
     @JIT
@@ -1593,12 +1669,10 @@ public class IRRuntimeHelpers {
     }
 
     public static IRubyObject[] toAry(ThreadContext context, IRubyObject[] args) {
-        if (args.length == 1 && args[0].respondsTo("to_ary")) {
-            IRubyObject newAry = Helpers.aryToAry(args[0]);
-            if (newAry.isNil()) {
-                args = new IRubyObject[] { args[0] };
-            } else if (newAry instanceof RubyArray) {
-                args = ((RubyArray) newAry).toJavaArray();
+        IRubyObject ary;
+        if (args.length == 1 && (ary = Helpers.aryOrToAry(context, args[0])) != context.nil) {
+            if (ary instanceof RubyArray) {
+                args = ((RubyArray) ary).toJavaArray();
             } else {
                 throw context.runtime.newTypeError(args[0].getType().getName() + "#to_ary should return Array");
             }
@@ -1856,7 +1930,15 @@ public class IRRuntimeHelpers {
         return string;
     }
 
-    public static RubyString freezeLiteralString(ThreadContext context, RubyString string, String file, int line) {
+    @JIT @Interp
+    public static RubyString freezeLiteralString(RubyString string) {
+        string.setFrozen(true);
+
+        return string;
+    }
+
+    @JIT @Interp
+    public static RubyString freezeLiteralString(RubyString string, ThreadContext context, String file, int line) {
         Ruby runtime = context.runtime;
 
         if (runtime.getInstanceConfig().isDebuggingFrozenStringLiteral()) {
@@ -1930,6 +2012,12 @@ public class IRRuntimeHelpers {
     @JIT
     public static RubyArray newArray(ThreadContext context, IRubyObject obj0, IRubyObject obj1) {
         return RubyArray.newArray(context.runtime, obj0, obj1);
+    }
+
+    @JIT @Interp
+    public static RubyString getFileNameStringFromScope(ThreadContext context, StaticScope currScope) {
+        // FIXME: Not very efficient to do all this every time
+        return context.runtime.newString(currScope.getIRScope().getFileName());
     }
 
     private static IRRuntimeHelpersSites sites(ThreadContext context) {

@@ -1,9 +1,9 @@
 /*
  ***** BEGIN LICENSE BLOCK *****
- * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ * Version: EPL 2.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
- * License Version 1.0 (the "License"); you may not use this file
+ * License Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
  * the License at http://www.eclipse.org/legal/epl-v10.html
  *
@@ -227,7 +227,7 @@ public class RubyStringScanner extends RubyObject {
         int size = str.getByteList().getRealSize();
         if (beg > size) return runtime.getNil();
         if (end > size) end = size;
-        return str.makeSharedString19(runtime, beg, end - beg);
+        return str.makeSharedString(runtime, beg, end - beg);
     }
 
     private IRubyObject extractBegLen(Ruby runtime, int beg, int len) {
@@ -235,7 +235,7 @@ public class RubyStringScanner extends RubyObject {
         int size = str.getByteList().getRealSize();
         if (beg > size) return runtime.getNil();
         if (beg + len > size) len = size - beg;
-        return str.makeSharedString19(runtime, beg, len);
+        return str.makeSharedString(runtime, beg, len);
     }
 
     ThreadLocal<Matcher> currentMatcher = new ThreadLocal<>();

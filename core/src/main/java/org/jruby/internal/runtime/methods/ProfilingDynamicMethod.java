@@ -1,9 +1,9 @@
 /*
  ***** BEGIN LICENSE BLOCK *****
- * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ * Version: EPL 2.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
- * License Version 1.0 (the "License"); you may not use this file
+ * License Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
  * the License at http://www.eclipse.org/legal/epl-v10.html
  *
@@ -29,14 +29,17 @@
 package org.jruby.internal.runtime.methods;
 
 import org.jruby.RubyModule;
+import org.jruby.runtime.ArgumentDescriptor;
 import org.jruby.runtime.Block;
+import org.jruby.runtime.Helpers;
+import org.jruby.runtime.Signature;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  * A DynamicMethod wrapper that performs timed profiling for each call.
  */
-public class ProfilingDynamicMethod extends DelegatingDynamicMethod {
+public class ProfilingDynamicMethod extends DelegatingDynamicMethod implements IRMethodArgs {
 
     public ProfilingDynamicMethod(DynamicMethod delegate) {
         super(delegate);
@@ -155,5 +158,15 @@ public class ProfilingDynamicMethod extends DelegatingDynamicMethod {
     @Override
     public DynamicMethod dup() {
         return new ProfilingDynamicMethod(delegate.dup());
+    }
+
+    public Signature getSignature() {
+        return delegate instanceof IRMethodArgs ?
+                ((IRMethodArgs) delegate).getSignature() : Signature.from(delegate.getArity());
+    }
+
+    public ArgumentDescriptor[] getArgumentDescriptors() {
+        return delegate instanceof IRMethodArgs ?
+                ((IRMethodArgs) delegate).getArgumentDescriptors() : Helpers.methodToArgumentDescriptors(delegate);
     }
 }

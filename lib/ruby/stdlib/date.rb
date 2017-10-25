@@ -824,7 +824,7 @@ class Date
   #
   # +sg+ specifies the Day of Calendar Reform.
   def self.civil(y=-4712, m=1, d=1, sg=ITALY)
-    if Fixnum === y and Fixnum === m and Fixnum === d and d > 0
+    if Integer === y and Integer === m and Integer === d and d > 0
       m += 13 if m < 0
       y -= 1 if y <= 0 and sg > 0 # TODO
       begin
@@ -1139,7 +1139,7 @@ class Date
     else
       # cannot use JODA::DateTimeUtils.fromJulianDay since we need to keep ajd as a Rational for precision
       millis, @sub_millis = ((dt_or_ajd - UNIX_EPOCH_IN_AJD) * 86400000).divmod(1)
-      raise ArgumentError, "Date out of range: millis=#{millis} (#{millis.class})" unless Fixnum === millis
+      raise ArgumentError, "Date out of range: millis=#{millis} (#{millis.class})" if millis > java.lang.Long::MAX_VALUE
       @dt = JODA::DateTime.new(millis, chronology(sg, of))
     end
 
@@ -1700,9 +1700,9 @@ class DateTime < Date
       of = Rational(zone_to_diff(of) || 0, 86400)
     end
 
-    if Fixnum === y and Fixnum === m and Fixnum === d and
-        Fixnum === h and Fixnum === min and
-        (Fixnum === s or (Rational === s and 1000 % s.denominator == 0)) and
+    if Integer === y and Integer === m and Integer === d and
+        Integer === h and Integer === min and
+        (Integer === s or (Rational === s and 1000 % s.denominator == 0)) and
         m > 0 and d > 0 and h >= 0 and h < 24 and min >= 0 and s >= 0
       y -= 1 if y <= 0 and sg > 0 # TODO
       ms = 0
@@ -1875,7 +1875,7 @@ end
 class Time
 
   def to_time
-    getlocal
+    self
   end
 
   def to_date
@@ -1934,7 +1934,7 @@ end
 class DateTime < Date
 
   def to_time
-    Time.new(year, mon, mday, hour, min, sec + sec_fraction, (@of * 86400).to_i).getlocal
+    Time.new(year, mon, mday, hour, min, sec + sec_fraction, (@of * 86400.0))
   end
 
   def to_date
@@ -1948,4 +1948,6 @@ class DateTime < Date
   private_class_method :today
   public_class_method  :now
 
+  # Adds native implemented methods...
+  org.jruby.ext.date.DateLibrary.new.load JRuby.runtime, false
 end

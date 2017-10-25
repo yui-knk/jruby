@@ -73,13 +73,13 @@ platform_is_not :windows do
         Process.setrlimit(:STACK, *Process.getrlimit(Process::RLIMIT_STACK)).should be_nil
       end
 
-      platform_is_not :solaris do
-        platform_is_not :aix do
-          it "coerces :MEMLOCK into RLIMIT_MEMLOCK" do
-            Process.setrlimit(:MEMLOCK, *Process.getrlimit(Process::RLIMIT_MEMLOCK)).should be_nil
-          end
+      platform_is_not :solaris, :aix do
+        it "coerces :MEMLOCK into RLIMIT_MEMLOCK" do
+          Process.setrlimit(:MEMLOCK, *Process.getrlimit(Process::RLIMIT_MEMLOCK)).should be_nil
         end
+      end
 
+      platform_is_not :solaris do
         it "coerces :NPROC into RLIMIT_NPROC" do
           Process.setrlimit(:NPROC, *Process.getrlimit(Process::RLIMIT_NPROC)).should be_nil
         end
@@ -89,7 +89,7 @@ platform_is_not :windows do
         end
       end
 
-      platform_is os: [:netbsd, :freebsd] do
+      platform_is :netbsd, :freebsd do
         it "coerces :SBSIZE into RLIMIT_SBSIZE" do
           Process.setrlimit(:SBSIZE, *Process.getrlimit(Process::RLIMIT_SBSIZE)).should be_nil
         end
@@ -155,13 +155,13 @@ platform_is_not :windows do
         Process.setrlimit("STACK", *Process.getrlimit(Process::RLIMIT_STACK)).should be_nil
       end
 
-      platform_is_not :solaris do
-        platform_is_not :aix do
-          it "coerces 'MEMLOCK' into RLIMIT_MEMLOCK" do
-            Process.setrlimit("MEMLOCK", *Process.getrlimit(Process::RLIMIT_MEMLOCK)).should be_nil
-          end
+      platform_is_not :solaris, :aix do
+        it "coerces 'MEMLOCK' into RLIMIT_MEMLOCK" do
+          Process.setrlimit("MEMLOCK", *Process.getrlimit(Process::RLIMIT_MEMLOCK)).should be_nil
         end
+      end
 
+      platform_is_not :solaris do
         it "coerces 'NPROC' into RLIMIT_NPROC" do
           Process.setrlimit("NPROC", *Process.getrlimit(Process::RLIMIT_NPROC)).should be_nil
         end
@@ -171,7 +171,7 @@ platform_is_not :windows do
         end
       end
 
-      platform_is os: [:netbsd, :freebsd] do
+      platform_is :netbsd, :freebsd do
         it "coerces 'SBSIZE' into RLIMIT_SBSIZE" do
           Process.setrlimit("SBSIZE", *Process.getrlimit(Process::RLIMIT_SBSIZE)).should be_nil
         end

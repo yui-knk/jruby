@@ -1,4 +1,5 @@
 require 'mspec/guards/guard'
+require 'mspec/utils/warnings'
 
 # MSpecScript provides a skeleton for all the MSpec runner scripts.
 
@@ -37,6 +38,10 @@ class MSpecScript
   end
 
   def initialize
+    if RUBY_VERSION < '2.2'
+      abort "MSpec needs Ruby 2.2 or more recent"
+    end
+
     config[:formatter] = nil
     config[:includes]  = []
     config[:excludes]  = []
@@ -50,6 +55,7 @@ class MSpecScript
     config[:astrings]  = []
     config[:ltags]     = []
     config[:abort]     = true
+    @loaded = []
   end
 
   # Returns the config object maintained by the instance's class.
@@ -70,7 +76,13 @@ class MSpecScript
     names.each do |name|
       config[:path].each do |dir|
         file = File.expand_path name, dir
-        return Kernel.load(file) if File.exist? file
+        if @loaded.include?(file)
+          return true
+        elsif File.exist? file
+          value = Kernel.load(file)
+          @loaded << file
+          return value
+        end
       end
     end
 
@@ -177,10 +189,11 @@ class MSpecScript
 
     patterns.each do |pattern|
       expanded = File.expand_path(pattern)
-      if File.file?(expanded)
+      if File.file?(expanded) && expanded.end_with?('.rb')
         return [expanded]
       elsif File.directory?(expanded)
-        return Dir["#{expanded}/**/*_spec.rb"].sort
+        specs = Dir["#{expanded}/**/*_spec.rb"].sort
+        return specs unless specs.empty?
       end
     end
 
@@ -226,22 +239,9 @@ class MSpecScript
     files patterns
   end
 
-  def cores
-    # From https://github.com/ruby-concurrency/concurrent-ruby/blob/master/lib/concurrent/utility/processor_counter.rb
-    if File.readable?("/proc/cpuinfo") # Linux
-      cores = File.readlines("/proc/cpuinfo").count { |line| line.start_with?('processor') }
-      raise "Could not parse /proc/cpuinfo" if cores == 0
-      cores
-    elsif File.executable?("/usr/sbin/psrinfo") # Solaris
-      File.readlines("/usr/sbin/psrinfo").grep(/on-*line/).size
-    elsif File.executable?("/usr/sbin/sysctl") # Darwin
-      Integer(`/usr/sbin/sysctl -n hw.ncpu`)
-    elsif File.executable?("/sbin/sysctl") # BSD
-      Integer(`/sbin/sysctl -n hw.ncpu`)
-    else
-      warn "Could not find number of processors"
-      1
-    end
+  def cores(max)
+    require 'etc'
+    [Etc.nprocessors, max].min
   end
 
   def setup_env
@@ -259,7 +259,6 @@ class MSpecScript
   # Instantiates an instance and calls the series of methods to
   # invoke the script.
   def self.main
-    $VERBOSE = nil unless ENV['OUTPUT_WARNINGS']
     script = new
     script.load_default
     script.try_load '~/.mspecrc'

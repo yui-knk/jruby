@@ -1,8 +1,8 @@
 /***** BEGIN LICENSE BLOCK *****
- * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ * Version: EPL 2.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
- * License Version 1.0 (the "License"); you may not use this file
+ * License Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
  * the License at http://www.eclipse.org/legal/epl-v10.html
  *
@@ -308,7 +308,7 @@ public class RubyFileTest {
         return zero_p(recv.getRuntime().getCurrentContext(), recv, filename);
     }
 
-    @JRubyMethod(name = "zero?", required = 1, module = true)
+    @JRubyMethod(name = {"empty?", "zero?"}, required = 1, module = true)
     public static RubyBoolean zero_p(ThreadContext context, IRubyObject recv, IRubyObject filename) {
         Ruby runtime = context.runtime;
 
@@ -451,7 +451,7 @@ public class RubyFileTest {
             return RubyFileTest.writable_p(recv, filename);
         }
 
-        @JRubyMethod(name = "zero?", required = 1)
+        @JRubyMethod(name = {"empty?", "zero?"}, required = 1)
         public static RubyBoolean zero_p(ThreadContext context, IRubyObject recv, IRubyObject filename) {
             return RubyFileTest.zero_p(context, recv, filename);
         }

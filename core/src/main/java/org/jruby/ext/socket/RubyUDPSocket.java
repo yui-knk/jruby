@@ -1,8 +1,8 @@
 /***** BEGIN LICENSE BLOCK *****
- * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ * Version: EPL 2.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
- * License Version 1.0 (the "License"); you may not use this file
+ * License Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
  * the License at http://www.eclipse.org/legal/epl-v10.html
  *
@@ -44,9 +44,9 @@ import java.net.StandardProtocolFamily;
 import java.net.UnknownHostException;
 import java.net.DatagramPacket;
 import java.nio.ByteBuffer;
+import java.nio.channels.AlreadyBoundException;
 import java.nio.channels.Channel;
 import java.nio.channels.DatagramChannel;
-import java.nio.channels.IllegalBlockingModeException;
 import java.nio.channels.NotYetConnectedException;
 
 import jnr.constants.platform.AddressFamily;
@@ -188,6 +188,9 @@ public class RubyUDPSocket extends RubyIPSocket {
         }
         catch (BindException e) {
             throw runtime.newErrnoEADDRFromBindException(e);
+        }
+        catch (AlreadyBoundException e) {
+            throw runtime.newErrnoEINVALError("bind(2) for " + host.inspect() + " port " + port);
         }
         catch (SocketException e) {
             final String message = e.getMessage();
@@ -430,6 +433,14 @@ public class RubyUDPSocket extends RubyIPSocket {
         } catch (UnknownHostException e) {
             throw SocketUtils.sockerr(runtime, "send: name or service not known");
         } catch (IOException e) { // SocketException
+            final String message = e.getMessage();
+            if (message != null) {
+                switch(message) {
+                case "Message too large": // Alpine Linux
+                case "Message too long":
+                    throw runtime.newErrnoEMSGSIZEError();
+                }
+            }
             throw runtime.newIOErrorFromException(e);
         }
         catch (RaiseException e) { throw e; }

@@ -1,8 +1,8 @@
 /***** BEGIN LICENSE BLOCK *****
- * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ * Version: EPL 2.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
- * License Version 1.0 (the "License"); you may not use this file
+ * License Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
  * the License at http://www.eclipse.org/legal/epl-v10.html
  *
@@ -30,6 +30,7 @@ package org.jruby.ext.ripper;
 import java.io.IOException;
 import org.jcodings.Encoding;
 import org.jruby.lexer.LexerSource;
+import org.jruby.parser.RubyParser;
 import org.jruby.util.ByteList;
 
 import static org.jruby.lexer.LexingCommon.*;
@@ -73,11 +74,11 @@ public class StringTerm extends StrTerm {
                 String options = parseRegexpFlags(lexer, src);
                 buffer.append(options.getBytes());
 
-                return Tokens.tREGEXP_END;
+                return RubyParser.tREGEXP_END;
             }
 
             buffer.append(end);
-            return Tokens.tSTRING_END;
+            return RubyParser.tSTRING_END;
     }
 
     @Override
@@ -89,7 +90,7 @@ public class StringTerm extends StrTerm {
         // Heredoc already parsed this and saved string...Do not parse..just return
         if (flags == -1) {
             lexer.ignoreNextScanEvent = true;
-            return Tokens.tSTRING_END;
+            return RubyParser.tSTRING_END;
         }
         
         ByteList buffer = createByteList(lexer);        
@@ -118,9 +119,9 @@ public class StringTerm extends StrTerm {
             case '$':
             case '@':
                 lexer.pushback(c);
-                return Tokens.tSTRING_DVAR;
+                return RubyParser.tSTRING_DVAR;
             case '{':
-                return Tokens.tSTRING_DBEG;
+                return RubyParser.tSTRING_DBEG;
             }
             buffer.append((byte) '#');
         }
@@ -132,16 +133,16 @@ public class StringTerm extends StrTerm {
         if (parseStringIntoBuffer(lexer, src, buffer, enc) == EOF) {
             if ((flags & STR_FUNC_REGEXP) != 0) {
                 if (lexer.eofp) lexer.compile_error("unterminated regexp meets end of file");
-                return Tokens.tREGEXP_END;
+                return RubyParser.tREGEXP_END;
             } else {
                 if (lexer.eofp) lexer.compile_error("unterminated string meets end of file");
-                return Tokens.tSTRING_END;
+                return RubyParser.tSTRING_END;
             }
         }
 
         lexer.setValue(lexer.createStr(buffer, flags));
         lexer.flush_string_content(enc[0]);
-        return Tokens.tSTRING_CONTENT;
+        return RubyParser.tSTRING_CONTENT;
     }
 
     private String parseRegexpFlags(RipperLexer lexer, LexerSource src) throws IOException {

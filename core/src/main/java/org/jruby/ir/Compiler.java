@@ -17,7 +17,6 @@ import org.jruby.ir.targets.JVMVisitor;
 import org.jruby.ir.targets.JVMVisitorMethodContext;
 import org.jruby.parser.StaticScope;
 import org.jruby.runtime.Block;
-import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.Helpers;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.Visibility;
@@ -53,7 +52,7 @@ public class Compiler extends IRTranslator<ScriptAndCode, ClassDefiningClassLoad
         }
 
         try {
-            JVMVisitor visitor = new JVMVisitor();
+            JVMVisitor visitor = new JVMVisitor(runtime);
             JVMVisitorMethodContext context = new JVMVisitorMethodContext();
             bytecode = visitor.compileToBytecode(scope, context);
             Class compiled = visitor.defineFromBytecode(scope, bytecode, classLoader);

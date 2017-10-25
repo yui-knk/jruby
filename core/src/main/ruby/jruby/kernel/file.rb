@@ -57,6 +57,8 @@ if org.jruby.platform.Platform::IS_WINDOWS
             attach_pfunc :PathRemoveExtensionW, [:buffer_in], :void
             attach_pfunc :PathStripToRootW, [:buffer_in], :bool
 
+            ffi_lib :kernel32
+
             # We use the presence or absence of this method to indicate everything bound successfully (jruby/jruby#3998)
             attach_pfunc :CreateSymbolicLinkW, [:buffer_in, :buffer_in, :dword], :bool
           rescue FFI::NotFoundError
@@ -110,7 +112,11 @@ if org.jruby.platform.Platform::IS_WINDOWS
           wtarget = target.wincode
 
           unless CreateSymbolicLinkW(wlink, wtarget, flags)
-            raise SystemCallError.new('CreateSymbolicLink', FFI.errno)
+            errno = FFI.errno
+            # FIXME: in MRI all win calling methods call into a large map between windows errors and unixy ones.  We
+            # need to add that map or possibly expost whatever we have in jnr-posix
+            raise Errno::EACCES.new('File.symlink') if errno == 1314 # ERROR_PRIVILEGE_NOT_HELD
+            raise SystemCallError.new('File.symlink', errno)
           end
 
           0 # Comply with spec
@@ -119,11 +125,12 @@ if org.jruby.platform.Platform::IS_WINDOWS
         # Returns whether or not +file+ is a symlink.
         #
         def self.symlink?(file)
-          return false unless File.exist?(file)
+          file = string_check(file)
 
-          bool  = false
-          wfile = string_check(file).wincode
+          return false if file =~ /^(classpath:|classloader:|uri:classloader|jar:)/ || !File.exist?(file)
 
+          file.slice!(5..-1) if file =~ /^file:/
+          wfile = file.wincode
           attrib = GetFileAttributesW(wfile)
 
           if attrib == INVALID_FILE_ATTRIBUTES
@@ -139,15 +146,12 @@ if org.jruby.platform.Platform::IS_WINDOWS
                 raise SystemCallError.new('FindFirstFile', FFI.errno)
               end
 
-              if find_data[:dwReserved0] == IO_REPARSE_TAG_SYMLINK
-                bool = true
-              end
+              return true if find_data[:dwReserved0] == IO_REPARSE_TAG_SYMLINK
             ensure
               CloseHandle(handle)
             end
           end
-
-          bool
+          false
         end
 
         private

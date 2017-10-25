@@ -1,8 +1,8 @@
 /***** BEGIN LICENSE BLOCK *****
- * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ * Version: EPL 2.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
- * License Version 1.0 (the "License"); you may not use this file
+ * License Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
  * the License at http://www.eclipse.org/legal/epl-v10.html
  *
@@ -31,7 +31,10 @@ import static org.jruby.RubyEnumerator.enumeratorize;
 import org.jcodings.Encoding;
 import org.jcodings.ascii.AsciiTables;
 import org.jcodings.constants.CharacterType;
+import org.jcodings.exception.EncodingError;
+import org.jcodings.exception.EncodingException;
 import org.jcodings.specific.ASCIIEncoding;
+import org.jcodings.specific.USASCIIEncoding;
 import org.jcodings.specific.UTF8Encoding;
 import org.jcodings.util.IntHash;
 import org.joni.Matcher;
@@ -41,13 +44,17 @@ import org.jruby.RubyArray;
 import org.jruby.RubyEncoding;
 import org.jruby.RubyIO;
 import org.jruby.RubyString;
+import org.jruby.ast.util.ArgsUtil;
 import org.jruby.runtime.Block;
+import org.jruby.runtime.Helpers;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.collections.IntHashMap;
 import org.jruby.util.io.EncodingUtils;
 import sun.misc.Unsafe;
 
+import java.nio.charset.Charset;
+import java.nio.charset.UnsupportedCharsetException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -77,6 +84,7 @@ public final class StringSupport {
 
     public static final int TRANS_SIZE = 256;
 
+    public static final ByteList[] EMPTY_BYTELIST_ARRAY = new ByteList[0];
     public static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     /**
@@ -145,7 +153,7 @@ public final class StringSupport {
 
     // rb_enc_precise_mbclen
     public static int preciseLength(Encoding enc, byte[]bytes, int p, int end) {
-        if (p >= end) return -1 - (1);
+        if (p >= end) return MBCLEN_NEEDMORE(1);
         int n = enc.length(bytes, p, end);
         if (n > end - p) return MBCLEN_NEEDMORE(n - (end - p));
         return n;
@@ -442,7 +450,16 @@ public final class StringSupport {
     }
 
     public static int codeLength(Encoding enc, int c) {
-        return enc.codeToMbcLength(c);
+        int i = enc.codeToMbcLength(c);
+        return checkCodepointError(i);
+    }
+
+    public static int checkCodepointError(int i) {
+        if (i < 0) {
+            // for backward compat with code expecting exceptions
+            throw new EncodingException(EncodingError.fromCode(i));
+        }
+        return i;
     }
 
     public static long getAscii(Encoding enc, byte[]bytes, int p, int end) {
@@ -822,15 +839,18 @@ public final class StringSupport {
                 if (ASCIIEncoding.INSTANCE.isPrint(c)) {
                     len++;
                 } else {
-                    if (enc.isUTF8()) {
+                    if (enc.isUTF8() && c > 0x7F) {
                         int n = preciseLength(enc, bytes, p - 1, end) - 1;
-                        if (n > 0) {
-                            if (buf == null) buf = new ByteList();
+                        if (MBCLEN_CHARFOUND_LEN(n) > 0) {
                             int cc = codePoint(runtime, enc, bytes, p - 1, end);
-                            Sprintf.sprintf(runtime, buf, "%x", cc);
-                            len += buf.getRealSize() + 4;
-                            buf.setRealSize(0);
-                            p += n;
+                            if (cc <= 0xFFFF) {
+                                len += 6;
+                            } else if (cc <= 0xFFFFF) {
+                                len += 9;
+                            } else {
+                                len += 10;
+                            }
+                            p += MBCLEN_CHARFOUND_LEN(n) - 1;
                             break;
                         }
                     }
@@ -887,18 +907,22 @@ public final class StringSupport {
                 out[q++] = (byte)c;
             } else {
                 out[q++] = '\\';
+                outBytes.setRealSize(q);
                 if (enc.isUTF8()) {
                     int n = preciseLength(enc, bytes, p - 1, end) - 1;
-                    if (n > 0) {
+                    if (MBCLEN_CHARFOUND_LEN(n) > 0) {
                         int cc = codePoint(runtime, enc, bytes, p - 1, end);
-                        p += n;
                         outBytes.setRealSize(q);
-                        Sprintf.sprintf(runtime, outBytes, "u{%x}", cc);
+                        p += n;
+                        if (cc <= 0xFFFF) {
+                            Sprintf.sprintf(runtime, outBytes, "u%04X", cc);
+                        } else {
+                            Sprintf.sprintf(runtime, outBytes, "u{%X}", cc);
+                        }
                         q = outBytes.getRealSize();
                         continue;
                     }
                 }
-                outBytes.setRealSize(q);
                 Sprintf.sprintf(runtime, outBytes, "x%02X", c);
                 q = outBytes.getRealSize();
             }
@@ -965,48 +989,40 @@ public final class StringSupport {
 
         final ByteList subString = subStringCodeRangeable.getByteList();
 
-        int sourceSize = source.realSize();
-        int subSize = subString.realSize();
+        final int srcLen = source.getRealSize();
+        final int subLen = subString.getRealSize();
 
-        if (sourceChars < subChars || sourceSize < subSize) return -1;
+        if (sourceChars < subChars || srcLen < subLen) return -1;
         if (sourceChars - pos < subChars) pos = sourceChars - subChars;
         if (sourceChars == 0) return pos;
 
-        byte[] sourceBytes = source.getUnsafeBytes();
-        int sbeg = source.getBegin();
-        int end = sbeg + source.getRealSize();
+        byte[] srcBytes = source.getUnsafeBytes();
+        final int srcBeg = source.getBegin();
 
         if (pos == 0) {
-            if (ByteList.memcmp(sourceBytes, sbeg, subString.getUnsafeBytes(), subString.begin(), subString.getRealSize()) == 0) {
+            if (ByteList.memcmp(srcBytes, srcBeg, subString.getUnsafeBytes(), subString.getBegin(), subLen) == 0) {
                 return 0;
-            } else {
-                return -1;
             }
+            return -1;
         }
 
-        int s = nth(enc, sourceBytes, sbeg, end, pos);
-
-        return strRindex(source, subString, s, pos, enc);
+        int s = nth(enc, srcBytes, srcBeg, srcBeg + srcLen, pos);
+        
+        return strRindex(srcBytes, srcBeg, srcLen, subString.getUnsafeBytes(), subString.getBegin(), subLen, s, pos, enc);
     }
 
-    private static int strRindex(ByteList str, ByteList sub, int s, int pos, Encoding enc) {
-        int slen;
-        byte[] strBytes = str.unsafeBytes();
-        byte[] subBytes = sub.unsafeBytes();
-        int sbeg, e, t;
+    private static int strRindex(final byte[] strBytes, final int strBeg, final int strLen,
+                                 final byte[] subBytes, final int subBeg, final int subLen,
+                                 int s, int pos, final Encoding enc) {
 
-        sbeg = str.begin();
-        e = str.begin() + str.realSize();
-        t = sub.begin();
-        slen = sub.realSize();
+        final int e = strBeg + strLen;
 
-        while (s >= sbeg && s + slen <= sbeg + str.realSize()) {
-            if (ByteList.memcmp(strBytes, s, subBytes, t, slen) == 0) {
+        while (s >= strBeg) {
+            if (s + subLen <= e && ByteList.memcmp(strBytes, s, subBytes, subBeg, subLen) == 0) {
                 return pos;
             }
-            if (pos == 0) break;
-            pos--;
-            s = enc.prevCharHead(strBytes, sbeg, s, e);
+            if (pos == 0) break; pos--;
+            s = enc.prevCharHead(strBytes, strBeg, s, e);
         }
 
         return -1;
@@ -1713,6 +1729,15 @@ public final class StringSupport {
     }
 
     public static IRubyObject rbStrEnumerateLines(RubyString str, ThreadContext context, String name, IRubyObject arg, Block block, boolean wantarray) {
+        IRubyObject opts = ArgsUtil.getOptionsArg(context.runtime, arg);
+        if (opts.isNil()) {
+            return rbStrEnumerateLines(str, context, name, arg, context.nil, block, wantarray);
+        } else {
+            return rbStrEnumerateLines(str, context, name, context.runtime.getGlobalVariables().get("$/"), opts, block, wantarray);
+        }
+    }
+
+    public static IRubyObject rbStrEnumerateLines(RubyString str, ThreadContext context, String name, IRubyObject arg, IRubyObject opts, Block block, boolean wantarray) {
         Ruby runtime = context.runtime;
 
         Encoding enc;
@@ -1720,10 +1745,17 @@ public final class StringSupport {
         int ptr, pend, subptr, subend, rsptr, hit, adjusted;
         int pos, len, rslen;
         boolean paragraph_mode = false;
+        boolean rsnewline = false;
+        boolean chomp = false;
 
         IRubyObject ary = null;
 
         rs = arg;
+
+        if (!opts.isNil()) {
+            IRubyObject _chomp = ArgsUtil.extractKeywordArg(context, "chomp", opts);
+            chomp = _chomp != null || _chomp.isTrue();
+        }
 
         if (block.isGiven()) {
             if (wantarray) {
@@ -1741,7 +1773,7 @@ public final class StringSupport {
             if (wantarray) {
                 ary = runtime.newEmptyArray();
             } else {
-                return enumeratorize(runtime, str, name, arg);
+                return enumeratorize(runtime, str, name, Helpers.arrayOf(arg, opts));
             }
         }
 
@@ -1764,7 +1796,8 @@ public final class StringSupport {
         rs = rs.convertToString();
         rslen = ((RubyString)rs).size();
 
-        if (rs == context.runtime.getGlobalVariables().get("$/"))
+        IRubyObject defaultSep = context.runtime.getGlobalVariables().get("$/");
+        if (rs == defaultSep)
             enc = str.getEncoding();
         else
             enc = str.checkEncoding((RubyString) rs);
@@ -1775,18 +1808,24 @@ public final class StringSupport {
             rsptr = RubyIO.PARAGRAPH_SEPARATOR.begin();
             rslen = 2;
             paragraph_mode = true;
+            rsnewline = true;
         } else {
-
-            rsbytes = ((RubyString)rs).getByteList().unsafeBytes();
-            rsptr = ((RubyString)rs).getByteList().begin();
+            ByteList rsByteList = ((RubyString) rs).getByteList();
+            rsbytes = rsByteList.unsafeBytes();
+            rsptr = rsByteList.begin();
+            if (rsByteList.length() == enc.minLength() &&
+                    enc.isNewLine(rsbytes, rsptr, rsByteList.length())) {
+                rsnewline = true;
+            }
         }
 
-        if ((rs == context.runtime.getGlobalVariables().get("$/") || paragraph_mode) && !enc.isAsciiCompatible()) {
+        if ((rs == defaultSep || paragraph_mode) && !enc.isAsciiCompatible()) {
             rs = RubyString.newString(runtime, rsbytes, rsptr, rslen);
             rs = EncodingUtils.rbStrEncode(context, rs, runtime.getEncodingService().convertEncodingToRubyEncoding(enc), 0, context.nil);
-            rsbytes = ((RubyString)rs).getByteList().unsafeBytes();
-            rsptr = ((RubyString)rs).getByteList().begin();
-            rslen = ((RubyString)rs).getByteList().realSize();
+            ByteList rsByteList = ((RubyString) rs).getByteList();
+            rsbytes = rsByteList.unsafeBytes();
+            rsptr = rsByteList.begin();
+            rslen = rsByteList.realSize();
         }
 
         while (subptr < pend) {
@@ -1800,8 +1839,22 @@ public final class StringSupport {
             }
             subend = hit + rslen;
             if (paragraph_mode) {
-                while (subend < pend && enc.isNewLine(strBytes, subend, pend)) {
+                int[] n = {0};
+                while (subend < pend) {
+                    if (EncodingUtils.encAscget(strBytes, subend, pend, n, enc) != '\r') {
+                        n[0] = 0;
+                    }
+                    if (!enc.isNewLine(strBytes, subend + n[0], pend)) break;
+                    subend += n[0];
                     subend += enc.length(strBytes, subend, pend);
+                }
+            }
+            hit = subend;
+            if (chomp) {
+                if (rsnewline) {
+                    subend = chomp_newline(strBytes, subptr, subend, enc);
+                } else {
+                    subend -= rslen;
                 }
             }
             line = str.substr(runtime, subptr - ptr, subend - subptr);
@@ -1811,10 +1864,13 @@ public final class StringSupport {
                 block.yieldSpecific(context, line);
                 str.modifyCheck(strBytes, len);
             }
-            subptr = subend;
+            subptr = hit;
         }
 
         if (subptr != pend) {
+            if (chomp && paragraph_mode) {
+                pend = chomp_newline(strBytes, subptr, pend, enc);
+            }
             line = str.substr(runtime, subptr - ptr, pend - subptr);
             if (wantarray) {
                 ((RubyArray) ary).push(line);
@@ -1824,6 +1880,17 @@ public final class StringSupport {
         }
 
         return wantarray ? ary : orig;
+    }
+
+    private static int chomp_newline(byte[] bytes, int p, int e, Encoding enc) {
+        int prev = enc.prevCharHead(bytes, p, e, e);
+        if (enc.isNewLine(bytes, prev, e)) {
+            e = prev;
+            prev = enc.prevCharHead(bytes, p, e, e);
+            if (prev != -1 && EncodingUtils.encAscget(bytes, prev, e, null, enc) == '\r')
+                e = prev;
+        }
+        return e;
     }
 
     public static int memsearch(byte[] xBytes, int x0, int m, byte[] yBytes, int y0, int n, Encoding enc) {
@@ -2429,5 +2496,48 @@ public final class StringSupport {
 
     public static int encCoderangeClean(int cr) {
         return (cr ^ (cr >> 1)) & CR_7BIT;
+    }
+
+
+    /**
+     * This is a far from perfect method in that it will totally choke on anything not UTF-8.
+     * However virtually nothing which was represented internally as a String would work with
+     * any String which was not UTF-8 (and in some cases 7-bit ASCII).
+     *
+     * Note: Do not use unless you are core developer or at least acknowledge the issues with
+     * this method.
+     */
+    @Deprecated
+    public static ByteList stringAsByteList(String string) {
+        if (string == null) return null; // For UnnamedRestArgNode
+        return ByteList.create(string);
+    }
+
+    /**
+     * This is a far from perfect method in that it will totally choke on anything not UTF-8.
+     * However virtually nothing which was represented internally as a String would work with
+     * any String which was not UTF-8 (and in some cases 7-bit ASCII).
+     *
+     * Note: Do not use unless you are core developer or at least acknowledge the issues with
+     * this method.
+     */
+    @Deprecated
+    public static ByteList[] stringsAsByteLists(String[] strings) {
+        ByteList[] newList = new ByteList[strings.length];
+
+        for (int i = 0; i < strings.length; i++) {
+            newList[i] = stringAsByteList(strings[i]);
+        }
+
+        return newList;
+    }
+
+    public static String byteListAsString(ByteList bytes) {
+        try {
+            Charset charset = bytes.getEncoding().getCharset();
+            if (charset != null) return new String(bytes.unsafeBytes(), bytes.begin(), bytes.realSize(), charset);
+        } catch (UnsupportedCharsetException e) {}
+
+        return new String(bytes.unsafeBytes(), bytes.begin(), bytes.realSize());
     }
 }

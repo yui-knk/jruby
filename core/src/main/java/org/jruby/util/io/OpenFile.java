@@ -21,6 +21,7 @@ import org.jruby.RubyThread;
 import org.jruby.exceptions.RaiseException;
 import org.jruby.platform.Platform;
 import org.jruby.runtime.Block;
+import org.jruby.runtime.Helpers;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.ByteList;
@@ -39,8 +40,8 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.channels.WritableByteChannel;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -147,7 +148,7 @@ public class OpenFile implements Finalizable {
 
     private final Ruby runtime;
 
-    protected List<RubyThread> blockingThreads;
+    protected volatile Set<RubyThread> blockingThreads;
 
     public void clearStdio() {
         stdio_file = null;
@@ -508,7 +509,14 @@ public class OpenFile implements Finalizable {
         boolean locked = lock();
         try {
             if (fd.chSelect != null) {
-                return thread.select(fd.chSelect, this, ops & fd.chSelect.validOps(), timeout);
+                int realOps = ops & fd.chSelect.validOps();
+
+                if ((realOps & SelectionKey.OP_WRITE) != (ops & SelectionKey.OP_WRITE)) {
+                    // MRI or poll or select appears to return ready for write select on a read-only channel
+                    return true;
+                }
+
+                return thread.select(fd.chSelect, this, realOps, timeout);
 
             } else if (fd.chSeek != null) {
                 return fd.chSeek.position() != -1
@@ -1547,7 +1555,7 @@ public class OpenFile implements Finalizable {
     }
 
     // rb_io_getline_fast
-    public IRubyObject getlineFast(ThreadContext context, Encoding enc, RubyIO io) {
+    public IRubyObject getlineFast(ThreadContext context, Encoding enc, RubyIO io, boolean chomp) {
         Ruby runtime = context.runtime;
         IRubyObject str = null;
         ByteList strByteList;
@@ -1564,22 +1572,28 @@ public class OpenFile implements Finalizable {
                     byte[] pBytes = READ_DATA_PENDING_PTR();
                     int p = READ_DATA_PENDING_OFF();
                     int e;
+                    int chomplen = 0;
 
                     e = memchr(pBytes, p, '\n', pending);
                     if (e != -1) {
                         pending = (int) (e - p + 1);
+                        if (chomp) {
+                            chomplen = ((pending > 1 &&  pBytes[e - 1] == '\r')?1:0) + 1;
+                        }
                     }
                     if (str == null) {
-                        str = RubyString.newString(runtime, pBytes, p, pending);
+                        str = RubyString.newString(runtime, pBytes, p, pending - chomplen);
                         strByteList = ((RubyString) str).getByteList();
                         rbuf.off += pending;
                         rbuf.len -= pending;
                     } else {
-                        ((RubyString) str).resize(len + pending);
+                        ((RubyString) str).resize(len + pending - chomplen);
                         strByteList = ((RubyString) str).getByteList();
-                        readBufferedData(strByteList.unsafeBytes(), strByteList.begin() + len, pending);
+                        readBufferedData(strByteList.unsafeBytes(), strByteList.begin() + len, pending - chomplen);
+                        rbuf.off += chomplen;
+                        rbuf.len -= chomplen;
                     }
-                    len += pending;
+                    len += pending - chomplen;
                     if (cr != StringSupport.CR_BROKEN)
                         pos += StringSupport.codeRangeScanRestartable(enc, strByteList.unsafeBytes(), strByteList.begin() + pos, strByteList.begin() + len, cr);
                     if (e != -1) break;
@@ -2580,14 +2594,19 @@ public class OpenFile implements Finalizable {
      * @param thread A thread blocking on this IO
      */
     public void addBlockingThread(RubyThread thread) {
-        boolean locked = lock();
-        try {
-            if (blockingThreads == null) {
-                blockingThreads = new ArrayList<RubyThread>(1);
+        Set<RubyThread> blockingThreads = this.blockingThreads;
+
+        if (blockingThreads == null) {
+            synchronized (this) {
+                blockingThreads = this.blockingThreads;
+                if (blockingThreads == null) {
+                    this.blockingThreads = blockingThreads = new HashSet<RubyThread>(1);
+                }
             }
+        }
+
+        synchronized (blockingThreads) {
             blockingThreads.add(thread);
-        } finally {
-            if (locked) unlock();
         }
     }
 
@@ -2596,40 +2615,58 @@ public class OpenFile implements Finalizable {
      *
      * @param thread A thread blocking on this IO
      */
-    public synchronized void removeBlockingThread(RubyThread thread) {
-        boolean locked = lock();
-        try {
-            if (blockingThreads == null) {
-                return;
-            }
-            for (int i = 0; i < blockingThreads.size(); i++) {
-                if (blockingThreads.get(i) == thread) {
-                    // not using remove(Object) here to avoid the equals() call
-                    blockingThreads.remove(i);
-                }
-            }
-        } finally {
-            if (locked) unlock();
+    public void removeBlockingThread(RubyThread thread) {
+        Set<RubyThread> blockingThreads = this.blockingThreads;
+
+        if (blockingThreads == null) {
+            return;
+        }
+
+        synchronized (blockingThreads) {
+            blockingThreads.remove(thread);
         }
     }
 
     /**
      * Fire an IOError in all threads blocking on this IO object
      */
-    public void interruptBlockingThreads() {
-        boolean locked = lock();
-        try {
-            if (blockingThreads == null) {
-                return;
-            }
-            for (int i = 0; i < blockingThreads.size(); i++) {
-                RubyThread thread = blockingThreads.get(i);
+    public void interruptBlockingThreads(ThreadContext context) {
+        Set<RubyThread> blockingThreads = this.blockingThreads;
+
+        if (blockingThreads == null) {
+            return;
+        }
+
+        synchronized (blockingThreads) {
+            for (RubyThread thread : blockingThreads) {
+                // If it's the current thread, ignore it since we're the one doing the interrupting
+                if (thread == context.getThread()) continue;
 
                 // raise will also wake the thread from selection
-                thread.raise(new IRubyObject[]{runtime.newIOError("stream closed").getException()}, Block.NULL_BLOCK);
+                RubyException exception = (RubyException) runtime.getIOError().newInstance(context, runtime.newString("stream closed"), Block.NULL_BLOCK);
+                thread.raise(Helpers.arrayOf(exception), Block.NULL_BLOCK);
             }
-        } finally {
-            if (locked) unlock();
+        }
+    }
+
+    /**
+     * Wait until all blocking threads have exited their blocking area. Use in combination with
+     * interruptBlockingThreads to ensure every blocking thread has moved on before proceding to
+     * manipulate the IO.
+     */
+    public void waitForBlockingThreads(ThreadContext context) {
+        Set<RubyThread> blockingThreads = this.blockingThreads;
+
+        if (blockingThreads == null) {
+            return;
+        }
+
+        while (blockingThreads.size() > 0) {
+            try {
+                context.getThread().sleep(1);
+            } catch (InterruptedException ie) {
+                break;
+            }
         }
     }
 

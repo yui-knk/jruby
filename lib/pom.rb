@@ -26,7 +26,7 @@ end
 
 default_gems =
   [
-   ImportedGem.new( 'jruby-openssl', '0.9.20' ),
+   ImportedGem.new( 'jruby-openssl', '0.9.21' ),
    ImportedGem.new( 'jruby-readline', '1.1.1' ),
    ImportedGem.new( 'rake', '${rake.version}' ),
    ImportedGem.new( 'rdoc', '${rdoc.version}' ),
@@ -36,9 +36,9 @@ default_gems =
    ImportedGem.new( 'psych', '2.2.4' ),
    ImportedGem.new( 'json', '${json.version}' ),
    ImportedGem.new( 'jar-dependencies', '${jar-dependencies.version}' ),
-   ImportedGem.new( 'racc', '${racc.version}'),
    ImportedGem.new( 'net-telnet', '0.1.1'),
    ImportedGem.new( 'did_you_mean', '1.0.1'),
+   ImportedGem.new( 'rake-ant', '1.0.4'),
   ]
 
 project 'JRuby Lib Setup' do

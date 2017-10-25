@@ -1,9 +1,9 @@
 /*
  ***** BEGIN LICENSE BLOCK *****
- * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ * Version: EPL 2.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
- * License Version 1.0 (the "License"); you may not use this file
+ * License Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
  * the License at http://www.eclipse.org/legal/epl-v10.html
  *
@@ -35,7 +35,6 @@ package org.jruby.ast;
 import java.util.List;
 
 import org.jcodings.Encoding;
-import org.jcodings.specific.USASCIIEncoding;
 
 import org.jruby.ast.types.ILiteralNode;
 import org.jruby.ast.types.INameNode;
@@ -48,39 +47,23 @@ import org.jruby.util.StringSupport;
  * Represents a symbol (:symbol_name).
  */
 public class SymbolNode extends Node implements ILiteralNode, INameNode, SideEffectFree {
-    private final String name;
-    private final Encoding encoding;
+    private final ByteList name;
 
-    // Interned ident path (e.g. [':', ident]).
+    @Deprecated
     public SymbolNode(ISourcePosition position, String name, Encoding encoding, int cr) {
-        super(position, false);
-        this.name = name;  // Assumed all names are already intern'd by lexer.
-
-        if (encoding == USASCIIEncoding.INSTANCE || cr == StringSupport.CR_7BIT) {
-            this.encoding = USASCIIEncoding.INSTANCE;
-        } else {
-            this.encoding = encoding;
-        }
+        this(position, new ByteList(name.getBytes(encoding.getCharset()), encoding));
     }
 
-    // String path (e.g. [':', str_beg, str_content, str_end])
     public SymbolNode(ISourcePosition position, ByteList value) {
         super(position, false);
-        this.name = value.toString().intern();
 
-        if (value.getEncoding() != USASCIIEncoding.INSTANCE) {
-            int size = value.realSize();
-            this.encoding = value.getEncoding().strLength(value.unsafeBytes(), value.begin(), size) == size ?
-                    USASCIIEncoding.INSTANCE : value.getEncoding();
-        } else {
-            this.encoding = USASCIIEncoding.INSTANCE;
-        }
+        this.name = value;
     }
 
     public boolean equals(Object other) {
         return other instanceof SymbolNode &&
-                name.equals(((SymbolNode) other).getName()) &&
-                encoding == ((SymbolNode) other).getEncoding();
+                name.equals(((SymbolNode) other).name) &&
+                name.getEncoding() == ((SymbolNode) other).getEncoding();
     }
 
     public NodeType getNodeType() {
@@ -96,14 +79,22 @@ public class SymbolNode extends Node implements ILiteralNode, INameNode, SideEff
      * @return Returns a String
      */
     public String getName() {
-        return name;
+        return StringSupport.byteListAsString(name);
     }
 
     public Encoding getEncoding() {
-        return encoding;
+        return name.getEncoding();
+    }
+
+    public ByteList getByteName() {
+        return name;
     }
 
     public List<Node> childNodes() {
         return EMPTY_LIST;
+    }
+
+    public ByteList getBytes() {
+        return name;
     }
 }

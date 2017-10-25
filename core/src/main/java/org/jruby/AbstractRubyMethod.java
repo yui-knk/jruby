@@ -1,8 +1,8 @@
 /***** BEGIN LICENSE BLOCK *****
- * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ * Version: EPL 2.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
- * License Version 1.0 (the "License"); you may not use this file
+ * License Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
  * the License at http://www.eclipse.org/legal/epl-v10.html
  *
@@ -32,6 +32,7 @@
 package org.jruby;
 
 import org.jruby.anno.JRubyMethod;
+import org.jruby.internal.runtime.methods.AliasMethod;
 import org.jruby.internal.runtime.methods.DynamicMethod;
 import org.jruby.internal.runtime.methods.IRMethodArgs;
 import org.jruby.internal.runtime.methods.UndefinedMethod;
@@ -41,15 +42,9 @@ import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.marshal.DataType;
 
-/** 
- * The RubyMethod class represents a RubyMethod object.
- * 
- * You can get such a method by calling the "method" method of an object.
- * 
- * Note: This was renamed from Method.java
- * 
- * @author  jpetersen
- * @since 0.2.3
+/**
+ * @see RubyMethod
+ * @see RubyUnboundMethod
  */
 public abstract class AbstractRubyMethod extends RubyObject implements DataType {
     protected RubyModule implementationModule;
@@ -82,9 +77,19 @@ public abstract class AbstractRubyMethod extends RubyObject implements DataType 
         return getRuntime().newFixnum(value);
     }
 
+    @Deprecated
+    public final IRubyObject op_eql19(ThreadContext context, IRubyObject other) {
+        return op_eql(context, other);
+    }
+
     @JRubyMethod(name = "eql?", required = 1)
-    public IRubyObject op_eql19(ThreadContext context, IRubyObject other) {
-        return op_equal(context, other);
+    public IRubyObject op_eql(ThreadContext context, IRubyObject other) {
+        return context.runtime.newBoolean( equals(other) );
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        return this == other;
     }
 
     public abstract AbstractRubyMethod rbClone();
@@ -112,7 +117,7 @@ public abstract class AbstractRubyMethod extends RubyObject implements DataType 
             return runtime.newArray(runtime.newString(filename), runtime.newFixnum(getLine()));
         }
 
-        return context.runtime.getNil();
+        return context.nil;
     }
 
     public String getFilename() {
@@ -149,6 +154,15 @@ public abstract class AbstractRubyMethod extends RubyObject implements DataType 
         } else {
             return RubyMethod.newMethod(superClass, methodName, superClass, originName, newMethod, receiver);
         }
+    }
+
+    @JRubyMethod
+    public IRubyObject original_name(ThreadContext context) {
+        if (method instanceof AliasMethod) {
+            return context.runtime.newSymbol(((AliasMethod) method).getOldName());
+        }
+
+        return context.runtime.newSymbol(method.getName());
     }
 }
 

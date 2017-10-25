@@ -1,5 +1,6 @@
 # encoding: utf-8
 require File.expand_path('../spec_helper', __FILE__)
+require File.expand_path('../../../shared/string/times', __FILE__)
 
 load_extension('string')
 
@@ -227,6 +228,22 @@ describe "C-API String function" do
     end
   end
 
+  describe "rb_tainted_str_new" do
+    it "creates a new tainted String" do
+      newstring = @s.rb_tainted_str_new("test", 4)
+      newstring.should == "test"
+      newstring.tainted?.should be_true
+    end
+  end
+
+  describe "rb_tainted_str_new2" do
+    it "creates a new tainted String" do
+      newstring = @s.rb_tainted_str_new2("test")
+      newstring.should == "test"
+      newstring.tainted?.should be_true
+    end
+  end
+
   describe "rb_str_append" do
     it "appends a string to another string" do
       @s.rb_str_append("Hello", " Goodbye").should == "Hello Goodbye"
@@ -246,6 +263,10 @@ describe "C-API String function" do
     it "returns a new string from concatenating two other strings" do
       @s.rb_str_plus("Hello", " Goodbye").should == "Hello Goodbye"
     end
+  end
+
+  describe "rb_str_times" do
+    it_behaves_like :string_times, :rb_str_times, ->(str, times) { @s.rb_str_times(str, times) }
   end
 
   describe "rb_str_buf_cat" do
@@ -496,7 +517,7 @@ describe "C-API String function" do
   describe "rb_str_hash" do
     it "hashes the string into a number" do
       s = "hello"
-      @s.rb_str_hash(s).should == s.hash
+      @s.rb_str_hash(s).should be_kind_of(Integer)
     end
   end
 
@@ -743,6 +764,24 @@ describe "C-API String function" do
     it "returns a formatted String from a variable number of arguments" do
       s = @s.rb_vsprintf("%s, %d, %.2f", "abc", 42, 2.7);
       s.should == "abc, 42, 2.70"
+    end
+  end
+
+  describe "rb_String" do
+    it "returns the passed argument if it is a string" do
+      @s.rb_String("a").should == "a"
+    end
+
+    it "tries to convert the passed argument to a string by calling #to_str first" do
+      @s.rb_String(ValidTostrTest.new).should == "ruby"
+    end
+
+    it "raises a TypeError if #to_str does not return a string" do
+      lambda { @s.rb_String(InvalidTostrTest.new) }.should raise_error(TypeError)
+    end
+
+    it "tries to convert the passed argument to a string by calling #to_s" do
+      @s.rb_String({"bar" => "foo"}).should == '{"bar"=>"foo"}'
     end
   end
 end

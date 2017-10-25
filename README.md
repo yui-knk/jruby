@@ -37,10 +37,19 @@ An alternative is to use one of the [Ruby version managers](https://www.ruby-lan
 
 For [`rbenv`](https://github.com/sstephenson/rbenv) you will need the
 [`ruby-build`](https://github.com/sstephenson/ruby-build) plugin. You may find that your system
-package manager can provide these. Then you can run:
+package manager can provide these. To see which versions of JRuby are available you should run:
 
 ```
-$ rbenv install jruby-9.1.6.0
+$ rbenv install jruby
+```
+
+Note: if you do not regularly git update rbenv this list of versions may be out of date.
+
+We recommend always selecting the latest version of JRuby from the list.  The you can install that particular version (9.1.10.0 is just for illustration):
+
+
+```
+$ rbenv install jruby-9.1.10.0
 ```
 
 For [`rvm`](https://rvm.io) you can simply do:
@@ -76,6 +85,6 @@ Project Contact: Thomas E Enebo <tom.enebo@gmail.com>
 
 ## License
 
-JRuby is licensed to you under three licenses - the EPL 1.0, GPL 2 and LGPL 2.1.
+JRuby is licensed to you under three licenses - the EPL 2.0, GPL 2 and LGPL 2.1.
 Some components have other licenses and copyright. See the [COPYING](COPYING)
 file for more specifics.

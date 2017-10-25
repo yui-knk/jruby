@@ -1,8 +1,8 @@
 /***** BEGIN LICENSE BLOCK *****
- * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ * Version: EPL 2.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
- * License Version 1.0 (the "License"); you may not use this file
+ * License Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
  * the License at http://www.eclipse.org/legal/epl-v10.html
  *
@@ -84,6 +84,7 @@ public class Platform {
         SPARCV9,
         S390X,
         ARM,
+        AARCH64,
         UNKNOWN;
         @Override
         public String toString() { return name().toLowerCase(LOCALE); }
@@ -145,6 +146,8 @@ public class Platform {
             return CPU.S390X;
         } else if ("arm".equals(archString)) {
             return CPU.ARM;
+        } else if ("aarch64".equals(archString)) {
+            return CPU.AARCH64;
         } else if ("universal".equals(archString)) {
             // OS X OpenJDK7 builds report "universal" right now
             String bits = SafePropertyAccessor.getProperty("sun.arch.data.model");
@@ -203,6 +206,7 @@ public class Platform {
                 case POWERPC64LE:
                 case SPARCV9:
                 case S390X:
+                case AARCH64:
                     dataModel = 64;
                     break;
                 default:

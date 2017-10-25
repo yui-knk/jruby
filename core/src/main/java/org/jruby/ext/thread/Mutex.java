@@ -1,8 +1,8 @@
 /***** BEGIN LICENSE BLOCK *****
- * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ * Version: EPL 2.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
- * License Version 1.0 (the "License"); you may not use this file
+ * License Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
  * the License at http://www.eclipse.org/legal/epl-v10.html
  *
@@ -60,7 +60,7 @@ public class Mutex extends RubyObject {
     }
 
     public static void setup(Ruby runtime) {
-        RubyClass cMutex = runtime.defineClass("Mutex", runtime.getObject(), new ObjectAllocator() {
+        RubyClass cMutex = runtime.getThread().defineClassUnder("Mutex", runtime.getObject(), new ObjectAllocator() {
 
             public IRubyObject allocate(Ruby runtime, RubyClass klass) {
                 return new Mutex(runtime, klass);
@@ -68,6 +68,7 @@ public class Mutex extends RubyObject {
         });
         cMutex.setReifiedClass(Mutex.class);
         cMutex.defineAnnotatedMethods(Mutex.class);
+        runtime.getObject().setConstant("Mutex", cMutex);
     }
 
     @JRubyMethod(name = "locked?")

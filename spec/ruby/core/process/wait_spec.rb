@@ -1,6 +1,9 @@
 require File.expand_path('../../../spec_helper', __FILE__)
+require File.expand_path('../fixtures/common', __FILE__)
 
 describe "Process.wait" do
+  ProcessSpecs.use_system_ruby(self)
+
   before :all do
     begin
       leaked = Process.waitall
@@ -58,9 +61,21 @@ describe "Process.wait" do
 
     # This spec is probably system-dependent.
     it "doesn't block if no child is available when WNOHANG is used" do
-      pid = Process.spawn(ruby_cmd('sleep'))
+      read, write = IO.pipe
+      pid = Process.fork do
+        read.close
+        Signal.trap("TERM") { Process.exit! }
+        write << 1
+        write.close
+        sleep
+      end
 
       Process.wait(pid, Process::WNOHANG).should be_nil
+
+      # wait for the child to setup its TERM handler
+      write.close
+      read.read(1)
+      read.close
 
       Process.kill("TERM", pid)
       Process.wait.should == pid

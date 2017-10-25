@@ -1042,19 +1042,44 @@ TRUE                 TrueClass   Synonym for true.
 =end
 
 describe "The predefined global constants" do
-  it "includes TRUE" do
-    Object.const_defined?(:TRUE).should == true
-    TRUE.should equal(true)
+  ruby_version_is ""..."2.4" do
+    it "includes TRUE" do
+      Object.const_defined?(:TRUE).should == true
+      TRUE.should equal(true)
+    end
+
+    it "includes FALSE" do
+      Object.const_defined?(:FALSE).should == true
+      FALSE.should equal(false)
+    end
+
+    it "includes NIL" do
+      Object.const_defined?(:NIL).should == true
+      NIL.should equal(nil)
+    end
   end
 
-  it "includes FALSE" do
-    Object.const_defined?(:FALSE).should == true
-    FALSE.should equal(false)
-  end
+  ruby_version_is "2.4" do
+    it "includes TRUE" do
+      Object.const_defined?(:TRUE).should == true
+      -> {
+        TRUE.should equal(true)
+      }.should complain(/constant ::TRUE is deprecated/)
+    end
 
-  it "includes NIL" do
-    Object.const_defined?(:NIL).should == true
-    NIL.should equal(nil)
+    it "includes FALSE" do
+      Object.const_defined?(:FALSE).should == true
+      -> {
+        FALSE.should equal(false)
+      }.should complain(/constant ::FALSE is deprecated/)
+    end
+
+    it "includes NIL" do
+      Object.const_defined?(:NIL).should == true
+      -> {
+        NIL.should equal(nil)
+      }.should complain(/constant ::NIL is deprecated/)
+    end
   end
 
   it "includes STDIN" do
@@ -1109,7 +1134,7 @@ with_feature :encoding do
         STDIN.external_encoding.should equal(Encoding::ISO_8859_16)
       end
 
-      it "has the encodings set by #set_encoding"do
+      it "has the encodings set by #set_encoding" do
         code = "STDIN.set_encoding Encoding::IBM775, Encoding::IBM866; " \
                "p [STDIN.external_encoding.name, STDIN.internal_encoding.name]"
         ruby_exe(code).chomp.should == %{["IBM775", "IBM866"]}
@@ -1142,7 +1167,7 @@ with_feature :encoding do
         STDOUT.external_encoding.should be_nil
       end
 
-      it "has the encodings set by #set_encoding"do
+      it "has the encodings set by #set_encoding" do
         code = "STDOUT.set_encoding Encoding::IBM775, Encoding::IBM866; " \
                "p [STDOUT.external_encoding.name, STDOUT.internal_encoding.name]"
         ruby_exe(code).chomp.should == %{["IBM775", "IBM866"]}
@@ -1168,7 +1193,7 @@ with_feature :encoding do
         STDERR.external_encoding.should be_nil
       end
 
-      it "has the encodings set by #set_encoding"do
+      it "has the encodings set by #set_encoding" do
         code = "STDERR.set_encoding Encoding::IBM775, Encoding::IBM866; " \
                "p [STDERR.external_encoding.name, STDERR.internal_encoding.name]"
         ruby_exe(code).chomp.should == %{["IBM775", "IBM866"]}

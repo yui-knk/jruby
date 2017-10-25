@@ -46,20 +46,19 @@ project 'JRuby Core' do
   jar 'com.github.jnr:jnr-enxio:0.16', :exclusions => ['com.github.jnr:jnr-ffi']
   jar 'com.github.jnr:jnr-x86asm:1.0.2', :exclusions => ['com.github.jnr:jnr-ffi']
   jar 'com.github.jnr:jnr-unixsocket:0.17', :exclusions => ['com.github.jnr:jnr-ffi']
-  jar 'com.github.jnr:jnr-posix:3.0.37', :exclusions => ['com.github.jnr:jnr-ffi']
+  jar 'com.github.jnr:jnr-posix:3.0.42', :exclusions => ['com.github.jnr:jnr-ffi']
   jar 'com.github.jnr:jnr-constants:0.9.9', :exclusions => ['com.github.jnr:jnr-ffi']
-  jar 'com.github.jnr:jnr-ffi:2.1.4'
+  jar 'com.github.jnr:jnr-ffi:2.1.7'
   jar 'com.github.jnr:jffi:${jffi.version}'
   jar 'com.github.jnr:jffi:${jffi.version}:native'
 
-  jar 'org.jruby.joni:joni:2.1.11'
+  jar 'org.jruby.joni:joni:2.1.12'
   jar 'org.jruby.extras:bytelist:1.0.15'
-  jar 'org.jruby.jcodings:jcodings:1.0.18'
+  jar 'org.jruby.jcodings:jcodings:1.0.26'
   jar 'org.jruby:dirgra:0.3'
 
-  jar 'com.headius:invokebinder:1.7'
+  jar 'com.headius:invokebinder:1.10'
   jar 'com.headius:options:1.4'
-  jar 'com.headius:unsafe-fences:1.0'
 
   jar 'bsf:bsf:2.4.0', :scope => 'provided'
   jar 'com.jcraft:jzlib:1.1.3'
@@ -77,6 +76,8 @@ project 'JRuby Core' do
   jar 'org.slf4j:slf4j-simple:1.7.12', :scope => 'test'
 
   jar 'me.qmx.jitescript:jitescript:0.4.1', :exclusions => ['org.ow2.asm:asm-all']
+
+  jar 'com.headius:modulator:1.0'
 
   jar 'jdk8-jvmci:jvmci-services:0', :systemPath => '${java.home}/../jre/lib/jvmci-services.jar', :scope => :system
   jar 'jdk8-jvmci:jvmci-api:0', :systemPath => '${java.home}/../jre/lib/jvmci/jvmci-api.jar', :scope => :system
@@ -189,6 +190,7 @@ project 'JRuby Core' do
     execute_goals( 'compile',
                    :id => 'default-compile',
                    :phase => 'compile',
+                   'debug' => 'true',
                    'annotationProcessors' => [ 'org.jruby.anno.AnnotationBinder' ],
                    'generatedSourcesDirectory' =>  'target/generated-sources',
                    'compilerArgs' => [ '-XDignore.symbol.file=true',
@@ -198,6 +200,7 @@ project 'JRuby Core' do
     execute_goals( 'compile',
                    :id => 'populators',
                    :phase => 'process-classes',
+                   'debug' => 'true',
                    'compilerArgs' => [ '-XDignore.symbol.file=true',
                                        '-J-Duser.language=en',
                                        '-J-Dfile.encoding=UTF-8',

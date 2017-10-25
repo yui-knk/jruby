@@ -1,12 +1,12 @@
 require File.expand_path('../../../spec_helper', __FILE__)
+
+# MRI magic to use built but not installed ruby
 $extmk = false
 
 require 'rbconfig'
-require 'fileutils'
-require 'tmpdir'
 
-OBJDIR ||= File.expand_path("../../../ext/#{RUBY_NAME}/#{RUBY_VERSION}", __FILE__)
-FileUtils.makedirs(OBJDIR)
+OBJDIR ||= File.expand_path("../../../ext/#{RUBY_ENGINE}/#{RUBY_VERSION}", __FILE__)
+mkdir_p(OBJDIR)
 
 def extension_path
   File.expand_path("../ext", __FILE__)
@@ -17,134 +17,83 @@ def object_path
 end
 
 def compile_extension(name)
-  preloadenv = RbConfig::CONFIG["PRELOADENV"] || "LD_PRELOAD"
-  preload, ENV[preloadenv] = ENV[preloadenv], nil if preloadenv
+  debug = false
+  run_mkmf_in_process = RUBY_ENGINE == 'truffleruby'
 
-  path = extension_path
-  objdir = object_path
+  ext = "#{name}_spec"
+  lib = "#{object_path}/#{ext}.#{RbConfig::CONFIG['DLEXT']}"
+  ruby_header = "#{RbConfig::CONFIG['rubyhdrdir']}/ruby.h"
 
-  # TODO use rakelib/ext_helper.rb?
-  arch_hdrdir = nil
-  ruby_hdrdir = nil
-
-  if RUBY_NAME == 'rbx'
-    hdrdir = RbConfig::CONFIG["rubyhdrdir"]
-  elsif RUBY_NAME =~ /^ruby/
-    if hdrdir = RbConfig::CONFIG["rubyhdrdir"]
-      arch_hdrdir = RbConfig::CONFIG["rubyarchhdrdir"] ||
-                    File.join(hdrdir, RbConfig::CONFIG["arch"])
-      ruby_hdrdir = File.join hdrdir, "ruby"
-    else
-      hdrdir = RbConfig::CONFIG["archdir"]
-    end
-  elsif RUBY_NAME == 'jruby'
-    require 'mkmf'
-    hdrdir = $hdrdir
-  elsif RUBY_NAME == "maglev"
-    require 'mkmf'
-    hdrdir = $hdrdir
-  elsif RUBY_NAME == 'truffleruby'
-    return compile_truffleruby_extconf_make(name, path, objdir)
-  else
-    raise "Don't know how to build C extensions with #{RUBY_NAME}"
-  end
-
-  ext       = "#{name}_spec"
-  source    = File.join(path, "#{ext}.c")
-  obj       = File.join(objdir, "#{ext}.#{RbConfig::CONFIG['OBJEXT']}")
-  lib       = File.join(objdir, "#{ext}.#{RbConfig::CONFIG['DLEXT']}")
-
-  ruby_header     = File.join(hdrdir, "ruby.h")
-  rubyspec_header = File.join(path, "rubyspec.h")
-
-  return lib if File.exist?(lib) and File.mtime(lib) > File.mtime(source) and
+  return lib if File.exist?(lib) and
+                File.mtime(lib) > File.mtime("#{extension_path}/rubyspec.h") and
+                File.mtime(lib) > File.mtime("#{extension_path}/#{ext}.c") and
                 File.mtime(lib) > File.mtime(ruby_header) and
-                File.mtime(lib) > File.mtime(rubyspec_header) and
                 true            # sentinel
 
-  # avoid problems where compilation failed but previous shlib exists
-  File.delete lib if File.exist? lib
-
-  cc        = RbConfig::CONFIG["CC"]
-  cflags    = (ENV["CFLAGS"] || RbConfig::CONFIG["CFLAGS"]).dup
-  cflags   += " #{RbConfig::CONFIG["ARCH_FLAG"]}" if RbConfig::CONFIG["ARCH_FLAG"]
-  cflags   += " #{RbConfig::CONFIG["CCDLFLAGS"]}" if RbConfig::CONFIG["CCDLFLAGS"]
-  incflags  = "-I#{path} -I#{hdrdir}"
-  incflags << " -I#{arch_hdrdir}" if arch_hdrdir
-  incflags << " -I#{ruby_hdrdir}" if ruby_hdrdir
-
-  output = `#{cc} #{incflags} #{cflags} -c #{source} -o #{obj}`
-
-  unless $?.success? and File.exist?(obj)
-    puts "ERROR:\n#{output}"
-    puts "incflags=#{incflags}"
-    puts "cflags=#{cflags}"
-    raise "Unable to compile \"#{source}\""
-  end
-
-  ldshared  = RbConfig::CONFIG["LDSHARED"]
-  ldshared += " #{RbConfig::CONFIG["ARCH_FLAG"]}" if RbConfig::CONFIG["ARCH_FLAG"]
-  libpath   = "-L#{path}"
-  libs      = RbConfig::CONFIG["LIBS"]
-  dldflags  = "#{RbConfig::CONFIG["LDFLAGS"]} #{RbConfig::CONFIG["DLDFLAGS"]} #{RbConfig::CONFIG["EXTDLDFLAGS"]}"
-  dldflags.sub!(/-Wl,-soname,\S+/, '')
-  dldflags.sub!("$(TARGET_ENTRY)", "Init_#{ext}")
-
-  link_cmd = "#{ldshared} #{obj} #{libpath} #{dldflags} #{libs} -o #{lib}"
-  output = `#{link_cmd}`
-
-  unless $?.success?
-    puts "ERROR:\n#{link_cmd}\n#{output}"
-    raise "Unable to link \"#{source}\""
-  end
-
-  lib
-ensure
-  ENV[preloadenv] = preload if preloadenv
-end
-
-def compile_extension_truffleruby(name)
-  sulong_config_file = File.join(extension_path, '.jruby-cext-build.yml')
-  output_file = File.join(object_path, "#{name}_spec.#{RbConfig::CONFIG['DLEXT']}")
-
-  File.open(sulong_config_file, 'w') do |f|
-    f.puts "src: #{name}_spec.c"
-    f.puts "out: #{output_file}"
-  end
-
-  command = ["#{RbConfig::CONFIG['bindir']}/../tool/jt.rb", 'cextc', extension_path]
-  system(*command)
-  raise "Compilation of #{extension_path} failed: #{$?}\n#{command.join(' ')}" unless $?.success?
-
-  output_file
-ensure
-  File.delete(sulong_config_file) if File.exist?(sulong_config_file)
-end
-
-def compile_truffleruby_extconf_make(name, path, objdir)
-  ext       = "#{name}_spec"
-  file      = "#{ext}.c"
-  source    = "#{path}/#{file}"
-  lib_target = "#{objdir}/#{ext}.#{RbConfig::CONFIG['DLEXT']}"
-  temp_dir = Dir.mktmpdir
+  # Copy needed source files to tmpdir
+  tmpdir = tmp("cext_#{name}")
+  Dir.mkdir(tmpdir)
   begin
-    copy =  "#{temp_dir}/#{file}"
-    FileUtils.cp "#{path}/rubyspec.h", temp_dir
-    FileUtils.cp "#{path}/truffleruby.h", temp_dir
-    FileUtils.cp source, copy
-    extconf_src = "require 'mkmf'\n" +
-                  "create_makefile('#{ext}', '#{temp_dir}')"
-    File.write("#{temp_dir}/extconf.rb", extconf_src)
-    Dir.chdir(temp_dir) do
-      system "#{RbConfig.ruby} extconf.rb"
-      system "make"                                    # run make in temp dir
-      FileUtils.cp "#{ext}.su", lib_target             # copy to .su file to library dir
-      FileUtils.cp "#{ext}.bc", objdir                 # copy to .bc file to library dir
+    ["rubyspec.h", "#{ext}.c"].each do |file|
+      cp "#{extension_path}/#{file}", "#{tmpdir}/#{file}"
+    end
+
+    Dir.chdir(tmpdir) do
+      if run_mkmf_in_process
+        required = require 'mkmf'
+        # Reinitialize mkmf if already required
+        init_mkmf unless required
+        create_makefile(ext, tmpdir)
+      else
+        File.write("extconf.rb", "require 'mkmf'\n" +
+          "$ruby = ENV.values_at('RUBY_EXE', 'RUBY_FLAGS').join(' ')\n" +
+          # MRI magic to consider building non-bundled extensions
+          "$extout = nil\n" +
+          "create_makefile(#{ext.inspect})\n")
+        output = ruby_exe("extconf.rb")
+        raise "extconf failed:\n#{output}" unless $?.success?
+        $stderr.puts output if debug
+      end
+
+      # Do not capture stderr as we want to show compiler warnings
+      make, opts = setup_make
+      output = IO.popen([make, "V=1", "DESTDIR=", opts], &:read)
+      raise "#{make} failed:\n#{output}" unless $?.success?
+      $stderr.puts output if debug
+
+      cp File.basename(lib), lib
     end
   ensure
-    FileUtils.remove_entry temp_dir
+    rm_r tmpdir
   end
-  lib_target
+
+  File.chmod(0755, lib)
+  lib
+end
+
+def setup_make
+  make = ENV['MAKE']
+  make ||= (RbConfig::CONFIG['host_os'].include?("mswin") ? "nmake" : "make")
+  make_flags = ENV["MAKEFLAGS"] || ''
+
+  # suppress logo of nmake.exe to stderr
+  if File.basename(make, ".*").downcase == "nmake" and !make_flags.include?("l")
+    ENV["MAKEFLAGS"] = "l#{make_flags}"
+  end
+
+  opts = {}
+  if /(?:\A|\s)--jobserver-(?:auth|fds)=(\d+),(\d+)/ =~ make_flags
+    begin
+      r = IO.for_fd($1.to_i(10), "rb", autoclose: false)
+      w = IO.for_fd($2.to_i(10), "wb", autoclose: false)
+    rescue Errno::EBADF
+    else
+      opts[r] = r
+      opts[w] = w
+    end
+  end
+
+  [make, opts]
 end
 
 def load_extension(name)
