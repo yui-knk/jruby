@@ -2837,7 +2837,7 @@ public class RubyModule extends RubyObject {
     public IRubyObject private_method_defined(ThreadContext context, IRubyObject symbol) {
         DynamicMethod method = searchMethod(symbol.asJavaString());
 
-        return context.runtime.newBoolean(!method.isUndefined() && method.getVisibility() == PRIVATE);
+        return context.runtime.newBoolean(!method.isUndefined() && (method.getVisibility() == PRIVATE || method.getVisibility() == MODULE_FUNCTION));
     }
 
     @JRubyMethod(name = "public_class_method", rest = true)
