@@ -1833,8 +1833,10 @@ lambda          : /* none */  {
                     support.pushBlockScope();
                     $$ = lexer.getLeftParenBegin();
                     lexer.setLeftParenBegin(lexer.incrementParenNest());
-                } f_larglist lambda_body {
-                    $$ = new LambdaNode($2.getPosition(), $2, $3, support.getCurrentScope());
+                } f_larglist {
+                    $$ = support.getPosition(null);
+                } lambda_body {
+                    $$ = new LambdaNode($<ISourcePosition>3, $2, $4, support.getCurrentScope());
                     support.popCurrentScope();
                     lexer.setLeftParenBegin($<Integer>1);
                 }
