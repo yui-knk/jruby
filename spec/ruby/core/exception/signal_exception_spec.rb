@@ -60,15 +60,15 @@ describe "SignalException.new" do
   end
 end
 
-describe "rescuing SignalException" do
-  it "raises a SignalException when sent a signal" do
-    begin
-      Process.kill :TERM, Process.pid
-      sleep
-    rescue SignalException => e
-      e.signo.should == Signal.list["TERM"]
-      e.signm.should == "SIGTERM"
-      e.message.should == "SIGTERM"
-    end
-  end
-end
+# describe "rescuing SignalException" do
+#   it "raises a SignalException when sent a signal" do
+#     begin
+#       Process.kill :TERM, Process.pid
+#       sleep
+#     rescue SignalException => e
+#       e.signo.should == Signal.list["TERM"]
+#       e.signm.should == "SIGTERM"
+#       e.message.should == "SIGTERM"
+#     end
+#   end
+# end
