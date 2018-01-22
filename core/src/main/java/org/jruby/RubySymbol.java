@@ -714,7 +714,7 @@ public class RubySymbol extends RubyObject implements MarshalEncoding, EncodingC
 
         public RubySymbol getSymbol(ByteList bytes, boolean hard) {
             RubySymbol symbol = null;
-            int hash = javaStringHashCode(bytes);
+            int hash = javaStringHashCode(runtime, bytes);
 
             for (SymbolEntry e = getEntryFromTable(symbolTable, hash); e != null; e = e.next) {
                 if (isSymbolMatch(bytes, hash, e)) {
@@ -979,13 +979,14 @@ public class RubySymbol extends RubyObject implements MarshalEncoding, EncodingC
         return str.hashCode();
     }
 
-    private static int javaStringHashCode(ByteList iso8859) {
+    private static int javaStringHashCode(Ruby runtime, ByteList iso8859) {
         int h = 0;
         int length = iso8859.length();
         if (length > 0) {
             byte val[] = iso8859.getUnsafeBytes();
             int begin = iso8859.begin();
             h = new String(val, begin, length, RubyEncoding.ISO).hashCode();
+            if (!RubyString.newString(runtime, iso8859).isAsciiOnly()) h = h ^ iso8859.getEncoding().getIndex();
         }
         return h;
     }
